@@ -10,7 +10,7 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=sameway
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - sameway_db_data:/var/lib/postgresql/data
     networks:
       - default
     healthcheck:
@@ -21,7 +21,7 @@ services:
       start_period: 30s
 
 volumes:
-  db_data:
+  sameway_db_data:
 
 networks:
   default:
