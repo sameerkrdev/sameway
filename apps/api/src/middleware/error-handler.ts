@@ -2,7 +2,7 @@ import type { ErrorRequestHandler, RequestHandler } from "express";
 import createHttpError, { isHttpError } from "http-errors";
 import { Prisma } from "@repo/db";
 import { logger } from "@repo/logger";
-import { ZodError } from "@repo/zod";
+import { ZodError } from "@repo/validator";
 
 type ErrorItem = {
   type: string;

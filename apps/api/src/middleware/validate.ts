@@ -1,5 +1,5 @@
 import type { RequestHandler } from "express";
-import type { z } from "@repo/zod";
+import type { z } from "@repo/validator";
 
 type RequestSchemas = {
   body?: z.ZodType;

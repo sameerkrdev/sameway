@@ -1,12 +1,12 @@
 import { Router } from "express";
 import createHttpError from "http-errors";
 import { prisma } from "@repo/db";
-import { validate } from "../middleware/validate";
 import {
   createUserSchema,
   updateUserSchema,
   userIdParamSchema,
-} from "../schemas/user";
+} from "@repo/validator/user";
+import { validate } from "../middleware/validate";
 
 export const usersRouter = Router();
 
