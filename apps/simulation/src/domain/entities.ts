@@ -182,6 +182,8 @@ export interface MatchingSettings {
   // Cost control.
   maxRoutedInsertionsPerDriver: number;
   maxRoutingCallsPerRun: number;
+  maxOptimizerCallsPerRun: number;
+  optimizerTimeoutMs: number;
   /** Decimal places to round coordinates to in cache keys; null disables rounding. */
   cacheCoordinatePrecision: number | null;
 
