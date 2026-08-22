@@ -11,6 +11,8 @@
 import {
   cellToBoundary,
   cellToLatLng,
+  getHexagonEdgeLengthAvg,
+  gridDisk,
   gridDiskDistances,
   gridDistance,
   latLngToCell,
@@ -19,7 +21,13 @@ import {
 
 import type { LatLng } from "@/domain/entities";
 
+import { haversineKm } from "./geo";
+
 export type H3Index = string;
+
+function edgeLengthKm(resolution: number): number {
+  return getHexagonEdgeLengthAvg(resolution, "km");
+}
 
 export function getH3Cell(lat: number, lng: number, resolution: number): H3Index {
   return latLngToCell(lat, lng, resolution);
@@ -87,4 +95,53 @@ export function indexByCell<T>(
   }
 
   return index;
+}
+
+/**
+ * Every cell touched by a polyline, in order, deduplicated.
+ *
+ * `gridPathCells` between consecutive vertices would be the h3-js way to do
+ * this, but it fails on cells that are not `gridDistance`-comparable across
+ * pentagon boundaries. Sampling at a fraction of the cell edge length is
+ * slower and completely robust, which is the right trade for a lab tool.
+ */
+export function cellsForPath(points: readonly LatLng[], resolution: number): H3Index[] {
+  if (points.length === 0) {
+    return [];
+  }
+
+  if (points.length === 1) {
+    return [getH3CellFor(points[0]!, resolution)];
+  }
+
+  const stepKm = edgeLengthKm(resolution) / 2;
+  const seen = new Set<H3Index>();
+  const cells: H3Index[] = [];
+
+  const push = (point: LatLng): void => {
+    const cell = getH3CellFor(point, resolution);
+    if (!seen.has(cell)) {
+      seen.add(cell);
+      cells.push(cell);
+    }
+  };
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const a = points[index]!;
+    const b = points[index + 1]!;
+    const segmentKm = haversineKm(a, b);
+    const steps = Math.max(1, Math.ceil(segmentKm / stepKm));
+
+    for (let step = 0; step <= steps; step += 1) {
+      const t = step / steps;
+      push({ lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t });
+    }
+  }
+
+  return cells;
+}
+
+/** All cells within `ring` hops of `cell`, inclusive. A unitless hop count. */
+export function gridDiskCells(cell: H3Index, ring: number): H3Index[] {
+  return gridDisk(cell, ring);
 }
