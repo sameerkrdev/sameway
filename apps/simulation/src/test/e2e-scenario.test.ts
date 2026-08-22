@@ -6,8 +6,13 @@ import { buildDelhiScenario, delhiRequest } from "./fixtures/delhiScenario";
 import { evaluationFor, failureCodes, runFixture, stageStatus } from "./fixtures/runEngine";
 
 /**
- * One scenario that walks every branch of the pipeline. If a refactor quietly
- * changes what a stage decides, one of these assertions moves.
+ * One scenario that walks the pipeline end to end.
+ *
+ * Eleven of the thirteen stages are still no-op placeholders, so only stage 0
+ * rejects anything today. The assertions below deliberately pin that: what
+ * eligibility decides, and the fact that every later stage passes everyone
+ * through. Tasks 10-21 add each stage's own rejections back, one task at a
+ * time, and tighten this file as they go.
  */
 describe("Delhi NCR morning pool", () => {
   let result: MatchingResult;
@@ -17,80 +22,71 @@ describe("Delhi NCR morning pool", () => {
     result = await runFixture(scenario, delhiRequest(scenario));
   });
 
-  it("matches the one driver that satisfies every filter", () => {
-    expect(result.ranked.map((entry) => entry.driverId)).toEqual(["D001"]);
-    expect(result.summary.bestDriverId).toBe("D001");
+  it("ranks every driver that clears basic eligibility", () => {
+    // D002, D003 and D004 fail stage 0; the rest survive a pipeline whose
+    // remaining filters are not implemented yet.
+    expect(result.ranked.map((entry) => entry.driverId)).toEqual([
+      "D001",
+      "D005",
+      "D006",
+      "D007",
+      "D008",
+    ]);
 
     const winner = evaluationFor(result, "D001");
     expect(winner.finalStatus).toBe("PASSED");
     expect(winner.rank).toBe(1);
-    expect(winner.finalScore).toBeGreaterThan(0);
     expect(winner.stageResults.every((stage) => stage.status === "PASSED")).toBe(true);
   });
 
-  it("rejects an offline driver at the status stage", () => {
+  it("rejects an offline driver at basic eligibility", () => {
     expect(failureCodes(result, "D002")).toEqual(["DRIVER_OFFLINE"]);
-    expect(evaluationFor(result, "D002").failedAtStageId).toBe("driverStatusFilter");
+    expect(evaluationFor(result, "D002").failedAtStageId).toBe("basicEligibility");
   });
 
   it("rejects an incompatible vehicle type", () => {
     expect(failureCodes(result, "D003")).toEqual(["VEHICLE_TYPE_MISMATCH"]);
-    expect(evaluationFor(result, "D003").failedAtStageId).toBe("vehicleFilter");
+    expect(evaluationFor(result, "D003").failedAtStageId).toBe("basicEligibility");
   });
 
   it("rejects a vehicle with no free seats", () => {
     const evaluation = evaluationFor(result, "D004");
     expect(failureCodes(result, "D004")).toEqual(["INSUFFICIENT_CAPACITY"]);
+    expect(evaluation.failedAtStageId).toBe("basicEligibility");
     expect(evaluation.metrics.availableSeats).toBe(0);
     expect(evaluation.metrics.totalSeats).toBe(4);
   });
 
-  it("rejects a driver who cannot reach the pickup in time", () => {
-    const evaluation = evaluationFor(result, "D005");
-    expect(failureCodes(result, "D005")).toEqual(["PICKUP_ETA_TOO_HIGH"]);
-
-    const [rejection] = evaluation.reasons;
-    expect(Number(rejection?.value)).toBeGreaterThan(6);
-    expect(rejection?.threshold).toBe(6);
+  it("keeps the three merged eligibility codes distinct", () => {
+    // The single stage absorbed three; it must not collapse their reason codes,
+    // because "no supply", "wrong supply" and "full supply" are different
+    // product problems.
+    const codes = ["D002", "D003", "D004"].map((driverId) => failureCodes(result, driverId)[0]);
+    expect(new Set(codes).size).toBe(3);
   });
 
-  it("rejects an insertion that detours too far", () => {
-    const evaluation = evaluationFor(result, "D006");
-    expect(failureCodes(result, "D006")).toEqual(["ROUTE_DETOUR_TOO_HIGH"]);
-
-    const [rejection] = evaluation.reasons;
-    expect(Number(rejection?.value)).toBeGreaterThan(15);
-    expect(rejection?.threshold).toBe(15);
-
-    // The attempt is still recorded so the map can draw what was tried.
-    expect(evaluation.insertion?.bestAttempt).toBeDefined();
-    expect(evaluation.insertion?.feasible).toBe(false);
+  it("passes every eligible driver through the unimplemented stages", () => {
+    // Placeholder stages must be transparent, not silently rejecting.
+    for (const stageId of [
+      "operationalState",
+      "h3RouteCorridor",
+      "pickupRouteDistance",
+      "directionCompatibility",
+      "stopSequenceGeneration",
+      "pickupTimeWindow",
+      "detourLowerBound",
+      "roadRouting",
+      "incrementalCost",
+      "hardConstraints",
+      "commit",
+    ]) {
+      expect(stageStatus(result, "D001", stageId)).toBe("PASSED");
+      // A driver that already failed stays NOT_EVALUATED rather than failing again.
+      expect(stageStatus(result, "D004", stageId)).toBe("NOT_EVALUATED");
+    }
   });
 
-  it("separates a policy rejection from a feasibility rejection", () => {
-    // D007's route works fine; the existing rider simply refuses to share.
-    expect(stageStatus(result, "D007", "routeFeasibility")).toBe("PASSED");
-    expect(failureCodes(result, "D007")).toEqual(["POOLING_NOT_ALLOWED_BY_EXISTING_RIDER"]);
-    expect(evaluationFor(result, "D007").failedAtStageId).toBe("poolingRules");
-  });
-
-  it("rejects a driver outside the H3 search area", () => {
-    expect(failureCodes(result, "D008")).toEqual(["H3_OUTSIDE_SEARCH"]);
-    expect(evaluationFor(result, "D008").failedAtStageId).toBe("h3CandidateGeneration");
-  });
-
-  it("keeps H3 hop counts separate from real distances", () => {
-    const winner = evaluationFor(result, "D001");
-
-    expect(Number.isInteger(winner.metrics.h3GridDistance)).toBe(true);
-    expect(winner.metrics.discoveredRing).toBe(winner.metrics.h3GridDistance);
-
-    // Road distance exceeds straight-line distance, and neither equals the hop count.
-    expect(winner.metrics.roadDistanceKm).toBeGreaterThan(winner.metrics.straightLineKm ?? 0);
-    expect(winner.metrics.roadEtaMin).toBeGreaterThan(0);
-  });
-
-  it("reports a funnel that narrows stage by stage", () => {
+  it("reports a funnel that narrows at the only implemented filter", () => {
     const counts = result.stageResults.map((stage) => ({
       id: stage.stageId,
       out: stage.outputCount,
@@ -98,19 +94,25 @@ describe("Delhi NCR morning pool", () => {
 
     expect(counts).toEqual([
       { id: "requestValidation", out: 8 },
-      { id: "h3CandidateGeneration", out: 7 },
-      { id: "driverStatusFilter", out: 6 },
-      { id: "vehicleFilter", out: 5 },
-      { id: "capacityPreFilter", out: 4 },
-      { id: "pickupEtaFilter", out: 3 },
-      { id: "routeFeasibility", out: 2 },
-      { id: "poolingRules", out: 1 },
-      { id: "scoring", out: 1 },
+      { id: "basicEligibility", out: 5 },
+      { id: "operationalState", out: 5 },
+      { id: "h3RouteCorridor", out: 5 },
+      { id: "pickupRouteDistance", out: 5 },
+      { id: "directionCompatibility", out: 5 },
+      { id: "stopSequenceGeneration", out: 5 },
+      { id: "pickupTimeWindow", out: 5 },
+      { id: "detourLowerBound", out: 5 },
+      { id: "roadRouting", out: 5 },
+      { id: "incrementalCost", out: 5 },
+      { id: "hardConstraints", out: 5 },
+      { id: "scoring", out: 5 },
+      { id: "commit", out: 5 },
     ]);
 
-    expect(result.summary.candidates).toBe(7);
-    expect(result.summary.passed).toBe(1);
-    expect(result.summary.rejected).toBe(7);
+    // Candidates now come from the corridor stage rather than H3 ring growth.
+    expect(result.summary.candidates).toBe(5);
+    expect(result.summary.passed).toBe(5);
+    expect(result.summary.rejected).toBe(3);
   });
 
   it("aggregates rejections by reason code for the dashboard", () => {
@@ -122,18 +124,13 @@ describe("Delhi NCR morning pool", () => {
       DRIVER_OFFLINE: 1,
       VEHICLE_TYPE_MISMATCH: 1,
       INSUFFICIENT_CAPACITY: 1,
-      PICKUP_ETA_TOO_HIGH: 1,
-      ROUTE_DETOUR_TOO_HIGH: 1,
-      POOLING_NOT_ALLOWED_BY_EXISTING_RIDER: 1,
-      H3_OUTSIDE_SEARCH: 1,
     });
   });
 
-  it("spends one matrix call rather than one call per candidate", () => {
-    expect(result.telemetry.matrixCalls).toBe(1);
+  it("issues no routing calls while every routing stage is a placeholder", () => {
     expect(result.telemetry.engine).toBe("MOCK");
-    // Four drivers survive to the ETA stage in one matrix call.
-    expect(result.telemetry.matrixElements).toBe(4);
+    expect(result.telemetry.matrixCalls).toBe(0);
+    expect(result.telemetry.routeCalls).toBe(0);
   });
 
   it("explains every rejection with a value and a threshold where one applies", () => {
@@ -145,6 +142,8 @@ describe("Delhi NCR morning pool", () => {
       for (const reason of evaluation.reasons) {
         expect(reason.message.length).toBeGreaterThan(0);
         expect(reason.category).toBeTruthy();
+        expect(reason.value).toBeDefined();
+        expect(reason.threshold).toBeDefined();
       }
     }
   });

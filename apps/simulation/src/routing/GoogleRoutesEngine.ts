@@ -151,8 +151,8 @@ export class GoogleRoutesEngine implements RoutingEngine {
           continue;
         }
 
-        // An unreachable pair is a legitimate answer, not an error: the ETA
-        // stage rejects it with PICKUP_UNREACHABLE.
+        // An unreachable pair is a legitimate answer, not an error: the caller
+        // reads `reachable` and decides what it means.
         const reachable = item.condition !== "ROUTE_NOT_FOUND" && item.distanceMeters !== undefined;
 
         elements.push({

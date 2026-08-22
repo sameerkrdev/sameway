@@ -11,12 +11,19 @@ describe("pipeline runner", () => {
     const scenario = buildDelhiScenario();
     const result = await runFixture(scenario, delhiRequest(scenario));
 
-    // D004's vehicle is full, so it dies at the capacity pre-filter.
+    // D004's vehicle is full, so it dies at the merged eligibility stage.
     const evaluation = evaluationFor(result, "D004");
-    expect(evaluation.failedAtStageId).toBe("capacityPreFilter");
-    expect(stageStatus(result, "D004", "capacityPreFilter")).toBe("FAILED");
+    expect(evaluation.failedAtStageId).toBe("basicEligibility");
+    expect(stageStatus(result, "D004", "basicEligibility")).toBe("FAILED");
 
-    for (const stageId of ["pickupEtaFilter", "routeFeasibility", "poolingRules", "scoring"]) {
+    for (const stageId of [
+      "operationalState",
+      "h3RouteCorridor",
+      "roadRouting",
+      "hardConstraints",
+      "scoring",
+      "commit",
+    ]) {
       expect(stageStatus(result, "D004", stageId)).toBe("NOT_EVALUATED");
     }
 
@@ -54,25 +61,6 @@ describe("pipeline runner", () => {
     expect(second.summary.rejectionsByCode).toEqual(first.summary.rejectionsByCode);
   });
 
-  it("stops routing and reports the budget rather than issuing unbounded calls", async () => {
-    const scenario = buildDelhiScenario();
-    // One call is consumed by the stage 5 matrix, leaving nothing for insertion.
-    const result = await runFixture(scenario, delhiRequest(scenario), {
-      maxRoutingCallsPerRun: 1,
-    });
-
-    const affected = result.evaluations.filter((evaluation) =>
-      evaluation.reasons.some((reason) => reason.code === "ROUTING_BUDGET_EXCEEDED"),
-    );
-
-    expect(affected.length).toBeGreaterThan(0);
-    expect(stageStatus(result, affected[0]?.driverId ?? "", "routeFeasibility")).toBe(
-      "NOT_EVALUATED",
-    );
-    expect(result.telemetry.budgetRemaining).toBe(0);
-    expect(result.ranked).toHaveLength(0);
-  });
-
   it("aborts the whole run when the request itself is invalid", async () => {
     const scenario = buildDelhiScenario();
     const request = { ...delhiRequest(scenario), seatsRequired: 0 };
@@ -88,37 +76,30 @@ describe("pipeline runner", () => {
   });
 
   it("rejects a stage order that repeats a stage", () => {
-    expect(() =>
-      resolveStages(STAGE_REGISTRY, ["driverStatusFilter", "driverStatusFilter"]),
-    ).toThrow(/more than once/);
+    expect(() => resolveStages(STAGE_REGISTRY, ["basicEligibility", "basicEligibility"])).toThrow(
+      /more than once/,
+    );
   });
 
-  it("honours a reordered pipeline", async () => {
+  it("runs all fourteen stages in the Overview's order", async () => {
     const scenario = buildDelhiScenario();
-    const result = await runFixture(scenario, delhiRequest(scenario), {
-      stageOrder: [
-        "requestValidation",
-        "h3CandidateGeneration",
-        "driverStatusFilter",
-        "vehicleFilter",
-        "capacityPreFilter",
-        "routeFeasibility",
-        "pickupEtaFilter",
-        "poolingRules",
-        "scoring",
-      ],
-    });
+    const result = await runFixture(scenario, delhiRequest(scenario));
 
     expect(result.stageResults.map((stage) => stage.stageId)).toEqual([
       "requestValidation",
-      "h3CandidateGeneration",
-      "driverStatusFilter",
-      "vehicleFilter",
-      "capacityPreFilter",
-      "routeFeasibility",
-      "pickupEtaFilter",
-      "poolingRules",
+      "basicEligibility",
+      "operationalState",
+      "h3RouteCorridor",
+      "pickupRouteDistance",
+      "directionCompatibility",
+      "stopSequenceGeneration",
+      "pickupTimeWindow",
+      "detourLowerBound",
+      "roadRouting",
+      "incrementalCost",
+      "hardConstraints",
       "scoring",
+      "commit",
     ]);
   });
 });

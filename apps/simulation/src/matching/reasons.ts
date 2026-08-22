@@ -14,8 +14,11 @@ export type ReasonCategory =
   | "STATUS"
   | "VEHICLE"
   | "CAPACITY"
-  | "ETA"
+  | "OPERATIONAL"
+  | "CORRIDOR"
+  | "DIRECTION"
   | "ROUTE"
+  | "OPTIMIZER"
   | "POOLING"
   | "SYSTEM";
 
@@ -83,11 +86,97 @@ export const REASONS = {
   CAPACITY_AVAILABLE: { category: "CAPACITY", label: "Seats available", outcome: "PASS" },
   INSUFFICIENT_CAPACITY: { category: "CAPACITY", label: "Insufficient seats", outcome: "FAIL" },
 
-  // Pickup ETA ---------------------------------------------------------------
-  PICKUP_ETA_OK: { category: "ETA", label: "Pickup ETA acceptable", outcome: "PASS" },
-  PICKUP_ETA_TOO_HIGH: { category: "ETA", label: "Pickup ETA too high", outcome: "FAIL" },
-  PICKUP_DISTANCE_TOO_HIGH: { category: "ETA", label: "Pickup too far", outcome: "FAIL" },
-  PICKUP_UNREACHABLE: { category: "ETA", label: "Pickup unreachable", outcome: "FAIL" },
+  // Operational state (stage 1) --------------------------------------------
+  OPERATIONAL_FLEXIBLE: {
+    category: "OPERATIONAL",
+    label: "Committed stops still flexible",
+    outcome: "PASS",
+  },
+  OPERATIONAL_NO_FLEXIBILITY: {
+    category: "OPERATIONAL",
+    label: "No flexibility in committed route",
+    outcome: "FAIL",
+  },
+
+  // Corridor (stage 2) ------------------------------------------------------
+  CORRIDOR_MATCH: { category: "CORRIDOR", label: "Pickup on route corridor", outcome: "PASS" },
+  CORRIDOR_NO_MATCH: {
+    category: "CORRIDOR",
+    label: "Pickup outside route corridor",
+    outcome: "FAIL",
+  },
+
+  // Corridor proximity (stage 3) -------------------------------------------
+  PICKUP_ON_ROUTE: { category: "SPATIAL", label: "Pickup close to route", outcome: "PASS" },
+  PICKUP_TOO_FAR_FROM_ROUTE: {
+    category: "SPATIAL",
+    label: "Pickup too far from route",
+    outcome: "FAIL",
+  },
+
+  // Direction (stage 4) -----------------------------------------------------
+  DIRECTION_COMPATIBLE: { category: "DIRECTION", label: "Direction compatible", outcome: "PASS" },
+  BEARING_INCOMPATIBLE: { category: "DIRECTION", label: "Wrong direction", outcome: "FAIL" },
+  DESTINATION_OFF_CORRIDOR: {
+    category: "DIRECTION",
+    label: "Destination off corridor",
+    outcome: "FAIL",
+  },
+  DESTINATION_BEHIND_VEHICLE: {
+    category: "DIRECTION",
+    label: "Destination behind vehicle",
+    outcome: "FAIL",
+  },
+
+  // Sequence generation (stage 5) ------------------------------------------
+  SEQUENCE_GENERATED: { category: "ROUTE", label: "Legal sequences found", outcome: "PASS" },
+  NO_LEGAL_SEQUENCE: { category: "ROUTE", label: "No legal stop sequence", outcome: "FAIL" },
+
+  // Time windows (stage 6) --------------------------------------------------
+  TIME_WINDOW_OK: { category: "ROUTE", label: "Delay budgets respected", outcome: "PASS" },
+  COMMITTED_PICKUP_DELAY_TOO_HIGH: {
+    category: "ROUTE",
+    label: "Committed pickup delayed too far",
+    outcome: "FAIL",
+  },
+  COMMITTED_DROP_DELAY_TOO_HIGH: {
+    category: "ROUTE",
+    label: "Committed drop delayed too far",
+    outcome: "FAIL",
+  },
+
+  // Lower bound (stage 7) ---------------------------------------------------
+  LOWER_BOUND_OK: { category: "ROUTE", label: "Within detour lower bound", outcome: "PASS" },
+  DETOUR_LOWER_BOUND_EXCEEDED: {
+    category: "ROUTE",
+    label: "Provably too long a detour",
+    outcome: "FAIL",
+  },
+
+  // Optimizer (stage 8) -----------------------------------------------------
+  OPTIMIZER_SOLVED: { category: "OPTIMIZER", label: "Sequence solved", outcome: "PASS" },
+  OPTIMIZER_INFEASIBLE: {
+    category: "OPTIMIZER",
+    label: "Solver could not serve the request",
+    outcome: "FAIL",
+  },
+  OPTIMIZER_CALL_FAILED: { category: "OPTIMIZER", label: "Optimizer call failed", outcome: "FAIL" },
+  OPTIMIZER_BUDGET_EXCEEDED: {
+    category: "OPTIMIZER",
+    label: "Optimizer budget exhausted",
+    outcome: "FAIL",
+  },
+  OPTIMIZER_MANDATORY_SHIPMENT_SKIPPED: {
+    category: "SYSTEM",
+    label: "Solver dropped a committed passenger",
+    outcome: "FAIL",
+  },
+
+  // Incremental cost (stage 9) ---------------------------------------------
+  COST_MEASURED: { category: "ROUTE", label: "Impact measured", outcome: "PASS" },
+
+  // Commit (stage 12) -------------------------------------------------------
+  COMMIT_READY: { category: "ROUTE", label: "Ready to commit", outcome: "PASS" },
 
   // Route feasibility --------------------------------------------------------
   ROUTE_FEASIBLE: { category: "ROUTE", label: "Route feasible", outcome: "PASS" },

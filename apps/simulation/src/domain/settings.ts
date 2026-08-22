@@ -1,33 +1,28 @@
 import type { MatchingSettings, StageId } from "./entities";
 
 /**
- * The default stage order runs the cheap matrix-backed ETA gate before the
- * expensive per-insertion route calls. The brief lists route feasibility first;
- * that order is still selectable because `stageOrder` is data, not code.
+ * The Overview's stage order, and the only order the engine supports.
+ *
+ * The previous `BRIEF_STAGE_ORDER` A/B existed because two stages were merely
+ * a cost trade-off against each other. These thirteen have strict data
+ * dependencies — stage 9 cannot measure what stage 8 has not yet routed — so a
+ * reorderable list would mostly express configurations that cannot run.
  */
 export const DEFAULT_STAGE_ORDER: StageId[] = [
   "requestValidation",
-  "h3CandidateGeneration",
-  "driverStatusFilter",
-  "vehicleFilter",
-  "capacityPreFilter",
-  "pickupEtaFilter",
-  "routeFeasibility",
-  "poolingRules",
+  "basicEligibility",
+  "operationalState",
+  "h3RouteCorridor",
+  "pickupRouteDistance",
+  "directionCompatibility",
+  "stopSequenceGeneration",
+  "pickupTimeWindow",
+  "detourLowerBound",
+  "roadRouting",
+  "incrementalCost",
+  "hardConstraints",
   "scoring",
-];
-
-/** The order written in the original brief, kept selectable for comparison. */
-export const BRIEF_STAGE_ORDER: StageId[] = [
-  "requestValidation",
-  "h3CandidateGeneration",
-  "driverStatusFilter",
-  "vehicleFilter",
-  "capacityPreFilter",
-  "routeFeasibility",
-  "pickupEtaFilter",
-  "poolingRules",
-  "scoring",
+  "commit",
 ];
 
 export const DEFAULT_SETTINGS: MatchingSettings = {
@@ -35,14 +30,17 @@ export const DEFAULT_SETTINGS: MatchingSettings = {
   minimumUsableCandidates: 10,
   maxH3Ring: 3,
 
-  maxPickupEtaMin: 6,
-  maxPickupRoadDistanceKm: 8,
+  // Corridor proximity (stages 3 and 4).
+  maxPickupToRouteDistanceKm: 1.5,
+  maxDropToRouteDistanceKm: 3,
+  maxBearingDifferenceDeg: 75,
 
   maxDetourPercent: 15,
   maxAdditionalDistanceKm: 5,
   maxAdditionalDurationMin: 12,
   maxExistingPassengerDelayMin: 8,
   maxNewPassengerPickupDelayMin: 6,
+  maxNewPassengerRideDetourMin: 10,
 
   maxPooledPassengers: 4,
 

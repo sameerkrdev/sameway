@@ -44,7 +44,13 @@ export const scoringStage: MatchingStage = {
           key: "eta",
           label: "Pickup ETA",
           rawValue: metrics.roadEtaMin,
-          normalized: normalizeLowerIsBetter(metrics.roadEtaMin, settings.maxPickupEtaMin),
+          // Task 20 rewrites scoring against the optimizer's real leg data.
+          // Until then the closest surviving threshold stands in for the
+          // deleted `maxPickupEtaMin`.
+          normalized: normalizeLowerIsBetter(
+            metrics.roadEtaMin,
+            settings.maxNewPassengerPickupDelayMin,
+          ),
           weight: weights.eta,
           contribution: 0,
         },
@@ -54,7 +60,7 @@ export const scoringStage: MatchingStage = {
           rawValue: metrics.roadDistanceKm,
           normalized: normalizeLowerIsBetter(
             metrics.roadDistanceKm,
-            settings.maxPickupRoadDistanceKm,
+            settings.maxPickupToRouteDistanceKm,
           ),
           weight: weights.distance,
           contribution: 0,

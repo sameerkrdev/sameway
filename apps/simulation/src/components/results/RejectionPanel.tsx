@@ -73,7 +73,7 @@ export function RejectionPanel({
                           </span>
                         ) : null}
                         {evaluation?.metrics.roadEtaMin !== undefined &&
-                        group.category === "ETA" ? (
+                        group.category === "OPTIMIZER" ? (
                           <span className="ml-2 text-[11px] text-[var(--muted-foreground)]">
                             ({formatMinutes(evaluation.metrics.roadEtaMin)})
                           </span>

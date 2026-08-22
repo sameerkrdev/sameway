@@ -147,16 +147,26 @@ export interface ScoringWeights {
   fairness: number;
 }
 
+/**
+ * The stages of `docs/Overview.md`, in the order the document numbers them.
+ * `requestValidation` is a pre-stage: it judges the request alone, before any
+ * driver is considered, so it has no Overview number.
+ */
 export type StageId =
   | "requestValidation"
-  | "h3CandidateGeneration"
-  | "driverStatusFilter"
-  | "vehicleFilter"
-  | "capacityPreFilter"
-  | "pickupEtaFilter"
-  | "routeFeasibility"
-  | "poolingRules"
-  | "scoring";
+  | "basicEligibility"
+  | "operationalState"
+  | "h3RouteCorridor"
+  | "pickupRouteDistance"
+  | "directionCompatibility"
+  | "stopSequenceGeneration"
+  | "pickupTimeWindow"
+  | "detourLowerBound"
+  | "roadRouting"
+  | "incrementalCost"
+  | "hardConstraints"
+  | "scoring"
+  | "commit";
 
 export interface MatchingSettings {
   // Spatial candidate generation. These bound the H3 search and nothing else;
@@ -165,9 +175,10 @@ export interface MatchingSettings {
   minimumUsableCandidates: number;
   maxH3Ring: number;
 
-  // Pickup proximity.
-  maxPickupEtaMin: number;
-  maxPickupRoadDistanceKm: number;
+  // Corridor proximity (stages 3 and 4).
+  maxPickupToRouteDistanceKm: number;
+  maxDropToRouteDistanceKm: number;
+  maxBearingDifferenceDeg: number;
 
   // Route feasibility.
   maxDetourPercent: number;
@@ -175,6 +186,7 @@ export interface MatchingSettings {
   maxAdditionalDurationMin: number;
   maxExistingPassengerDelayMin: number;
   maxNewPassengerPickupDelayMin: number;
+  maxNewPassengerRideDetourMin: number;
 
   // Pooling business rules.
   maxPooledPassengers: number;

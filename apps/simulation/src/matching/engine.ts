@@ -257,7 +257,7 @@ function skippedStage(
  * drivers that were never in the search area.
  */
 function countCandidates(stageResults: readonly StageResult[]): number {
-  const generation = stageResults.find((stage) => stage.stageId === "h3CandidateGeneration");
+  const generation = stageResults.find((stage) => stage.stageId === "h3RouteCorridor");
   return generation ? generation.outputCount : 0;
 }
 

@@ -18,11 +18,11 @@ export function DebugConsole({ run }: { run: MatchingRun }) {
   const { telemetry } = run.result;
 
   const insertionNotes = run.result.stageResults.find(
-    (stage) => stage.stageId === "routeFeasibility",
+    (stage) => stage.stageId === "roadRouting",
   )?.notes;
 
   const h3Notes = run.result.stageResults.find(
-    (stage) => stage.stageId === "h3CandidateGeneration",
+    (stage) => stage.stageId === "h3RouteCorridor",
   )?.notes;
 
   return (

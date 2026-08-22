@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { RoutingMode, ScoringWeights } from "@/domain/entities";
-import { BRIEF_STAGE_ORDER } from "@/domain/settings";
+import { DEFAULT_STAGE_ORDER } from "@/domain/settings";
 import { normalizeWeights } from "@/matching/normalize";
 import { useSettingsStore } from "@/stores/settingsStore";
 
@@ -32,10 +32,9 @@ export function SettingsPanel() {
   const setWeight = useSettingsStore((state) => state.setWeight);
   const reset = useSettingsStore((state) => state.reset);
   const useDefaultOrder = useSettingsStore((state) => state.useDefaultOrder);
-  const useBriefOrder = useSettingsStore((state) => state.useBriefOrder);
 
   const normalized = normalizeWeights(settings.weights);
-  const usingBriefOrder = settings.stageOrder.join(",") === BRIEF_STAGE_ORDER.join(",");
+  const usingDefaultOrder = settings.stageOrder.join(",") === DEFAULT_STAGE_ORDER.join(",");
 
   return (
     <div className="flex flex-col gap-3">
@@ -71,19 +70,26 @@ export function SettingsPanel() {
         </p>
       </Section>
 
-      <Section title="Pickup proximity">
+      <Section title="Corridor proximity">
         <div className="grid grid-cols-2 gap-2">
           <NumberField
-            label="Max pickup ETA (min)"
-            value={settings.maxPickupEtaMin}
+            label="Max pickup → route (km)"
+            value={settings.maxPickupToRouteDistanceKm}
             min={0}
-            onChange={(value) => set("maxPickupEtaMin", value)}
+            onChange={(value) => set("maxPickupToRouteDistanceKm", value)}
           />
           <NumberField
-            label="Max pickup distance (km)"
-            value={settings.maxPickupRoadDistanceKm}
+            label="Max drop → route (km)"
+            value={settings.maxDropToRouteDistanceKm}
             min={0}
-            onChange={(value) => set("maxPickupRoadDistanceKm", value)}
+            onChange={(value) => set("maxDropToRouteDistanceKm", value)}
+          />
+          <NumberField
+            label="Max bearing difference (deg)"
+            value={settings.maxBearingDifferenceDeg}
+            min={0}
+            max={180}
+            onChange={(value) => set("maxBearingDifferenceDeg", value)}
           />
         </div>
       </Section>
@@ -119,6 +125,12 @@ export function SettingsPanel() {
             value={settings.maxNewPassengerPickupDelayMin}
             min={0}
             onChange={(value) => set("maxNewPassengerPickupDelayMin", value)}
+          />
+          <NumberField
+            label="Max new rider ride detour (min)"
+            value={settings.maxNewPassengerRideDetourMin}
+            min={0}
+            onChange={(value) => set("maxNewPassengerRideDetourMin", value)}
           />
           <NumberField
             label="Max pooled passengers"
@@ -168,23 +180,16 @@ export function SettingsPanel() {
 
       <Section title="Stage order">
         <p className="text-[11px] text-[var(--muted-foreground)]">
-          The default runs the cheap ETA matrix before route insertion. The brief&apos;s order does
-          the opposite and costs considerably more.
+          The thirteen stages have strict data dependencies, so the Overview&apos;s order is the
+          only one that runs end to end.
         </p>
         <div className="flex gap-2">
           <Button
             size="xs"
-            variant={usingBriefOrder ? "outline" : "default"}
+            variant={usingDefaultOrder ? "default" : "outline"}
             onClick={useDefaultOrder}
           >
-            ETA first (default)
-          </Button>
-          <Button
-            size="xs"
-            variant={usingBriefOrder ? "default" : "outline"}
-            onClick={useBriefOrder}
-          >
-            Route first (brief)
+            Overview order (default)
           </Button>
         </div>
       </Section>

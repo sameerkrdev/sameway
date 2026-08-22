@@ -139,7 +139,7 @@ function MapSurface() {
 
   const searchedRing = useMemo(() => {
     const stage = currentRun?.result.stageResults.find(
-      (entry) => entry.stageId === "h3CandidateGeneration",
+      (entry) => entry.stageId === "h3RouteCorridor",
     );
     const stoppedAtRing = stage?.notes?.stoppedAtRing;
     return typeof stoppedAtRing === "number" ? stoppedAtRing : null;
