@@ -28,6 +28,13 @@ interface ProxyRequest {
 
 const auth = new GoogleAuth({ scopes: [SCOPE] });
 
+/**
+ * Thrown when the request body itself is malformed — a bad value from our own
+ * client, not an upstream failure. Kept distinct from upstream errors so a 400
+ * (our fault) is never confused with a 502 (Google's call failed).
+ */
+class ProxyBadRequestError extends Error {}
+
 function isoAt(baseMs: number, offsetMin: number): string {
   return new Date(baseMs + offsetMin * 60000).toISOString();
 }
@@ -83,6 +90,16 @@ function toShipmentModel(request: ProxyRequest, nowMs: number): Record<string, u
 
   const shipmentIndexById = new Map(request.shipments.map((shipment, index) => [shipment.id, index]));
 
+  function resolveShipmentIndex(shipmentId: string): number {
+    const index = shipmentIndexById.get(shipmentId);
+    if (index === undefined) {
+      throw new ProxyBadRequestError(
+        `lockedVisits references shipmentId "${shipmentId}", which is not present in shipments.`,
+      );
+    }
+    return index;
+  }
+
   const model: Record<string, unknown> = {
     globalStartTime: isoAt(nowMs, 0),
     globalEndTime: isoAt(nowMs, 120),
@@ -107,7 +124,7 @@ function toShipmentModel(request: ProxyRequest, nowMs: number): Record<string, u
         {
           vehicleIndex: 0,
           visits: request.lockedVisits.map((visit) => ({
-            shipmentIndex: shipmentIndexById.get(visit.shipmentId) ?? 0,
+            shipmentIndex: resolveShipmentIndex(visit.shipmentId),
             isPickup: visit.type === "PICKUP",
           })),
         },
@@ -188,10 +205,28 @@ export function optimizerProxyPlugin(): Plugin {
             return;
           }
 
+          let parsed: ProxyRequest;
           try {
-            const parsed = JSON.parse(await readBody(req)) as ProxyRequest;
-            const payload = toShipmentModel(parsed, Date.now());
+            parsed = JSON.parse(await readBody(req)) as ProxyRequest;
+          } catch {
+            send(res, 400, { error: "Request body is not valid JSON." });
+            return;
+          }
 
+          let payload: Record<string, unknown>;
+          try {
+            payload = toShipmentModel(parsed, Date.now());
+          } catch (error) {
+            if (error instanceof ProxyBadRequestError) {
+              send(res, 400, { error: error.message });
+            } else {
+              const message = error instanceof Error ? error.message : "Malformed optimize-tours request.";
+              send(res, 400, { error: message });
+            }
+            return;
+          }
+
+          try {
             const response = await client.request({
               url: `https://routeoptimization.googleapis.com/v1/projects/${project}:optimizeTours`,
               method: "POST",
