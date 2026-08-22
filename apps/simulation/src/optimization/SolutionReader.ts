@@ -25,12 +25,40 @@ interface RawResponse {
   skippedShipments?: { index?: number }[];
 }
 
-/** Google durations are protobuf `Duration` strings: a number of seconds plus "s". */
+/**
+ * Google durations are protobuf `Duration` strings: a number of seconds plus
+ * "s". A value that parses to `NaN` must not silently flow into
+ * `totalDurationMin` — later stages compare measurements against thresholds
+ * with `value > limit`, and `NaN > limit` is always `false`. A malformed
+ * duration would therefore *clear* every hard constraint instead of tripping
+ * one, producing a driver who silently passes checks it never actually met.
+ * Refuse it the same way the transition-count mismatch is refused.
+ */
 function durationToMinutes(value: string | undefined): number {
   if (!value) {
     return 0;
   }
-  return Number.parseFloat(value.replace(/s$/, "")) / 60;
+  const parsed = Number.parseFloat(value.replace(/s$/, ""));
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Solver returned an unparseable travel duration: ${JSON.stringify(value)}`);
+  }
+  return parsed / 60;
+}
+
+/**
+ * Same reasoning as `durationToMinutes`: a non-numeric distance must not
+ * silently become `NaN` and clear downstream threshold checks. `undefined`
+ * (the field genuinely absent) is treated as `0`; anything else must be a
+ * finite number.
+ */
+function distanceMetersToKm(value: number | undefined): number {
+  if (value === undefined) {
+    return 0;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`Solver returned an unparseable travel distance: ${JSON.stringify(value)}`);
+  }
+  return value / 1000;
 }
 
 function minutesBetween(startIso: string | undefined, endIso: string | undefined): number {
@@ -106,7 +134,7 @@ export function readOptimizeToursResponse(
 
     const transition = transitions[index] ?? {};
     const leg: RouteLegResult = {
-      distanceKm: (transition.travelDistanceMeters ?? 0) / 1000,
+      distanceKm: distanceMetersToKm(transition.travelDistanceMeters),
       durationMin: durationToMinutes(transition.travelDuration),
     };
 

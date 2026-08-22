@@ -107,6 +107,20 @@ describe("readOptimizeToursResponse", () => {
     expect(result.legs).toEqual([]);
     expect(result.totalDistanceKm).toBe(0);
   });
+
+  it("throws when a transition's travel duration cannot be parsed", () => {
+    const body = response() as { routes: { transitions: { travelDuration: string }[] }[] };
+    body.routes[0]!.transitions[0]!.travelDuration = "not-a-duration";
+
+    expect(() => readOptimizeToursResponse(request, body)).toThrow(/not-a-duration/);
+  });
+
+  it("throws when a transition's travel distance is not a finite number", () => {
+    const body = response() as { routes: { transitions: { travelDistanceMeters: unknown }[] }[] };
+    body.routes[0]!.transitions[0]!.travelDistanceMeters = "not-a-number";
+
+    expect(() => readOptimizeToursResponse(request, body)).toThrow(/not-a-number/);
+  });
 });
 
 describe("toProposedStopSequence", () => {
