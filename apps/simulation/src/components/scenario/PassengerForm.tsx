@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PASSENGER_STATES, type Passenger } from "@/domain/entities";
+import { DEFAULT_PASSENGER_DELAY_BUDGETS } from "@/domain/settings";
 import { newPassengerId, useScenarioStore } from "@/stores/scenarioStore";
 
 import { ToggleRow } from "./VehicleForm";
@@ -40,6 +41,7 @@ export function PassengerForm() {
               state: "WAITING",
               specialRequirements: [],
               allowsPooling: true,
+              ...DEFAULT_PASSENGER_DELAY_BUDGETS,
             });
           }}
         >

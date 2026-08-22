@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Passenger } from "@/domain/entities";
+import { DEFAULT_PASSENGER_DELAY_BUDGETS } from "@/domain/settings";
 import {
   computeOnboardSeats,
   computePeakCommittedSeats,
@@ -32,6 +33,7 @@ function passenger(id: string, seats: number, state: Passenger["state"]): Passen
     state,
     specialRequirements: [],
     allowsPooling: true,
+    ...DEFAULT_PASSENGER_DELAY_BUDGETS,
   };
 }
 

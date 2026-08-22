@@ -80,6 +80,15 @@ export interface Passenger {
   state: PassengerState;
   specialRequirements: string[];
   allowsPooling: boolean;
+  /**
+   * How much later than promised this passenger will tolerate being collected.
+   * Stage 1 turns it into a delay budget, stage 6 pre-filters orderings against
+   * it, stage 8 encodes it as a hard time window, and stage 10 re-checks it
+   * against the solver's real leg times. One source of truth, four consumers.
+   */
+  maxPickupDelayMin: number;
+  /** The same tolerance, applied to arrival at their destination. */
+  maxDropDelayMin: number;
 }
 
 export interface Stop {
@@ -90,6 +99,12 @@ export interface Stop {
   location: LatLng;
   address?: string;
   sequence: number;
+  /**
+   * The ETA in minutes from the driver's position at the time this stop was
+   * committed — the promise stages 6, 9 and 10 protect. Stage 12 re-stamps it
+   * on commit, which is what makes the committed route the new baseline.
+   */
+  originalEtaMin: number;
 }
 
 export interface Ride {
@@ -176,7 +191,7 @@ export interface MatchingSettings {
 }
 
 export interface Scenario {
-  schemaVersion: 1;
+  schemaVersion: 2;
   id: string;
   name: string;
   /** Present when the scenario came from the seeded generator. */
@@ -189,4 +204,4 @@ export interface Scenario {
   settings: MatchingSettings;
 }
 
-export const SCENARIO_SCHEMA_VERSION = 1 as const;
+export const SCENARIO_SCHEMA_VERSION = 2 as const;

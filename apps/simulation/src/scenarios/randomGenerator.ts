@@ -1,4 +1,5 @@
 import type { Driver, LatLng, Passenger, Ride, Scenario, Stop, Vehicle } from "@/domain/entities";
+import { DEFAULT_PASSENGER_DELAY_BUDGETS } from "@/domain/settings";
 import { offsetBy } from "@/lib/geo";
 import { createRng, type Rng } from "@/lib/rng";
 
@@ -97,6 +98,7 @@ export function generateScenario(overrides: Partial<GeneratorParams> = {}): Scen
       state: "WAITING",
       specialRequirements: [],
       allowsPooling: rng.next() * 100 < params.poolingPercent,
+      ...DEFAULT_PASSENGER_DELAY_BUDGETS,
     });
   }
 
@@ -115,6 +117,7 @@ export function generateScenario(overrides: Partial<GeneratorParams> = {}): Scen
     state: "WAITING",
     specialRequirements: [],
     allowsPooling: true,
+    ...DEFAULT_PASSENGER_DELAY_BUDGETS,
   };
 
   return makeScenario({
@@ -218,6 +221,7 @@ function assignRides(args: {
           type: "PICKUP",
           location: scatter(rng, driver.location, params.areaRadiusKm / 2),
           sequence: 0,
+          originalEtaMin: 0,
         });
       }
 
@@ -228,6 +232,7 @@ function assignRides(args: {
         type: "DROP",
         location: scatter(rng, params.center, params.areaRadiusKm),
         sequence: 0,
+        originalEtaMin: 0,
       });
     }
 

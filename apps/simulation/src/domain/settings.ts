@@ -61,6 +61,18 @@ export const DEFAULT_SETTINGS: MatchingSettings = {
   },
 };
 
+/**
+ * Fallback per-passenger delay tolerances used wherever a `Passenger` is
+ * constructed without explicit budgets (scenario builders, presets, the
+ * random generator, and the v1-to-v2 migrator when the source document has no
+ * `settings`). Mirrors `DEFAULT_SETTINGS`'s own defaults so a fresh passenger
+ * and a freshly-initialized scenario agree on what "default" means.
+ */
+export const DEFAULT_PASSENGER_DELAY_BUDGETS = {
+  maxPickupDelayMin: DEFAULT_SETTINGS.maxNewPassengerPickupDelayMin,
+  maxDropDelayMin: DEFAULT_SETTINGS.maxExistingPassengerDelayMin,
+} as const;
+
 export function cloneSettings(settings: MatchingSettings): MatchingSettings {
   return {
     ...settings,

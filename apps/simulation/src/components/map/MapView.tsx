@@ -115,6 +115,7 @@ function MapSurface() {
               type: target.stopType ?? "PICKUP",
               location: point,
               sequence: ride.stops.length,
+              originalEtaMin: 0,
             },
           ]);
         }

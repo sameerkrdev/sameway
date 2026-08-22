@@ -9,7 +9,7 @@ import type {
   Stop,
   Vehicle,
 } from "@/domain/entities";
-import { DEFAULT_SETTINGS } from "@/domain/settings";
+import { DEFAULT_PASSENGER_DELAY_BUDGETS, DEFAULT_SETTINGS } from "@/domain/settings";
 import { offsetBy } from "@/lib/geo";
 
 export const CONNAUGHT_PLACE: LatLng = { lat: 28.6315, lng: 77.2167 };
@@ -61,6 +61,7 @@ function passenger(id: string, overrides: Partial<Passenger> = {}): Passenger {
     state: "WAITING",
     specialRequirements: [],
     allowsPooling: true,
+    ...DEFAULT_PASSENGER_DELAY_BUDGETS,
     ...overrides,
   };
 }
@@ -73,7 +74,7 @@ function stop(
   location: LatLng,
   sequence: number,
 ): Stop {
-  return { id, rideId, passengerId, type, location, sequence };
+  return { id, rideId, passengerId, type, location, sequence, originalEtaMin: 0 };
 }
 
 /**
@@ -167,7 +168,7 @@ export function buildDelhiScenario(): Scenario {
   };
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "SC_DELHI",
     name: "Delhi NCR Morning Pool",
     drivers,

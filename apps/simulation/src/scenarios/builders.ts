@@ -9,7 +9,7 @@ import type {
   Stop,
   Vehicle,
 } from "@/domain/entities";
-import { DEFAULT_SETTINGS } from "@/domain/settings";
+import { DEFAULT_PASSENGER_DELAY_BUDGETS, DEFAULT_SETTINGS } from "@/domain/settings";
 
 /** Demo geography only. No matching logic may reference these values. */
 export const DELHI_PLACES = {
@@ -107,6 +107,7 @@ export function makePassenger(
     state: "WAITING",
     specialRequirements: [],
     allowsPooling: true,
+    ...DEFAULT_PASSENGER_DELAY_BUDGETS,
     ...overrides,
   };
 }
@@ -114,7 +115,7 @@ export function makePassenger(
 export function makeStop(
   overrides: Partial<Stop> & Pick<Stop, "id" | "rideId" | "passengerId" | "type" | "location">,
 ): Stop {
-  return { sequence: 0, ...overrides };
+  return { sequence: 0, originalEtaMin: 0, ...overrides };
 }
 
 /** Builds a ride and renumbers its stops so `sequence` always matches order. */
@@ -169,7 +170,7 @@ export interface ScenarioInput {
 
 export function makeScenario(input: ScenarioInput): Scenario {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: input.id,
     name: input.name,
     ...(input.seed !== undefined ? { seed: input.seed } : {}),

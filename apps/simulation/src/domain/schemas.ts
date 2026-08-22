@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { haversineKm } from "@/lib/geo";
+
 import { SCENARIO_SCHEMA_VERSION, type Scenario } from "./entities";
 
 const latLngSchema = z.object({
@@ -50,6 +52,8 @@ const passengerSchema = z.object({
   state: passengerStateSchema,
   specialRequirements: z.array(z.string()),
   allowsPooling: z.boolean(),
+  maxPickupDelayMin: z.number().min(0),
+  maxDropDelayMin: z.number().min(0),
 });
 
 const stopSchema = z.object({
@@ -60,6 +64,7 @@ const stopSchema = z.object({
   location: latLngSchema,
   address: z.string().optional(),
   sequence: z.number().int().min(0),
+  originalEtaMin: z.number().min(0),
 });
 
 const rideSchema = z.object({
@@ -155,11 +160,83 @@ export interface ScenarioParseFailure {
 export type ScenarioParseResult = ScenarioParseSuccess | ScenarioParseFailure;
 
 /**
+ * Straight-line minutes per kilometre used to seed `originalEtaMin` on a
+ * migrated v1 stop.
+ *
+ * A v1 document never recorded what was promised, so any value here is an
+ * invention. A geometric estimate is the honest one: it is reproducible, needs
+ * no network, and stage 12 overwrites it with real solver data the first time
+ * the ride is committed to.
+ */
+const MIGRATION_MINUTES_PER_KM = 3;
+
+interface V1Passenger {
+  maxPickupDelayMin?: number;
+  maxDropDelayMin?: number;
+}
+
+interface V1Stop {
+  location: { lat: number; lng: number };
+  originalEtaMin?: number;
+}
+
+/**
+ * Upgrades a v1 scenario in place before validation.
+ *
+ * Migration runs before the schema rather than after, so a v1 document is
+ * never reported to the user as "invalid" for lacking fields that did not
+ * exist when it was exported.
+ */
+function migrateToV2(input: unknown): unknown {
+  if (typeof input !== "object" || input === null) {
+    return input;
+  }
+
+  const document = input as Record<string, unknown>;
+  if (document.schemaVersion !== 1) {
+    return input;
+  }
+
+  const clone = structuredClone(document);
+  const settings = (clone.settings ?? {}) as Record<string, number>;
+  const pickupBudget = settings.maxNewPassengerPickupDelayMin ?? 6;
+  const dropBudget = settings.maxExistingPassengerDelayMin ?? 8;
+
+  clone.schemaVersion = 2;
+
+  for (const passenger of (clone.passengers ?? []) as V1Passenger[]) {
+    passenger.maxPickupDelayMin ??= pickupBudget;
+    passenger.maxDropDelayMin ??= dropBudget;
+  }
+
+  for (const ride of (clone.rides ?? []) as { stops?: V1Stop[] }[]) {
+    let cumulativeKm = 0;
+    let previous: { lat: number; lng: number } | null = null;
+
+    for (const stop of ride.stops ?? []) {
+      if (previous) {
+        cumulativeKm += haversineKm(previous, stop.location);
+      }
+      previous = stop.location;
+      stop.originalEtaMin ??= cumulativeKm * MIGRATION_MINUTES_PER_KM;
+    }
+  }
+
+  for (const request of (clone.requests ?? []) as { intermediateStops?: V1Stop[] }[]) {
+    for (const stop of request.intermediateStops ?? []) {
+      stop.originalEtaMin ??= 0;
+    }
+  }
+
+  return clone;
+}
+
+/**
  * Validates untrusted scenario JSON. A malformed bug repro must fail loudly
  * rather than half-loading and quietly changing what the engine is fed.
  */
 export function parseScenario(input: unknown): ScenarioParseResult {
-  const result = scenarioSchema.safeParse(input);
+  const result = scenarioSchema.safeParse(migrateToV2(input));
 
   if (!result.success) {
     return {

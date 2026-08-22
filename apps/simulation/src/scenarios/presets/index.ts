@@ -79,12 +79,14 @@ const airportPooling: ScenarioPreset = {
           passengerId: "P001",
           type: "PICKUP",
           location: offsetBy(CP, 0.6, 200),
+          originalEtaMin: 0,
         },
         {
           id: "S_A1_D",
           passengerId: "P001",
           type: "DROP",
           location: DELHI_PLACES.igiAirport,
+          originalEtaMin: 0,
         },
       ]),
       makeRide("R_AIR2", "D002", [
@@ -93,12 +95,14 @@ const airportPooling: ScenarioPreset = {
           passengerId: "P002",
           type: "PICKUP",
           location: offsetBy(CP, 1.1, 215),
+          originalEtaMin: 0,
         },
         {
           id: "S_A2_D",
           passengerId: "P002",
           type: "DROP",
           location: offsetBy(DELHI_PLACES.igiAirport, 0.8, 90),
+          originalEtaMin: 0,
         },
       ]),
     ];
@@ -143,11 +147,41 @@ const multiplePassengers: ScenarioPreset = {
   build: () => {
     const rides = [
       makeRide("R_MULTI", "D001", [
-        { id: "S_M_P2", passengerId: "P002", type: "PICKUP", location: offsetBy(CP, 1.0, 80) },
-        { id: "S_M_D1", passengerId: "P001", type: "DROP", location: offsetBy(CP, 2.0, 85) },
-        { id: "S_M_P3", passengerId: "P003", type: "PICKUP", location: offsetBy(CP, 2.6, 88) },
-        { id: "S_M_D2", passengerId: "P002", type: "DROP", location: offsetBy(CP, 4.0, 90) },
-        { id: "S_M_D3", passengerId: "P003", type: "DROP", location: offsetBy(CP, 5.5, 92) },
+        {
+          id: "S_M_P2",
+          passengerId: "P002",
+          type: "PICKUP",
+          location: offsetBy(CP, 1.0, 80),
+          originalEtaMin: 0,
+        },
+        {
+          id: "S_M_D1",
+          passengerId: "P001",
+          type: "DROP",
+          location: offsetBy(CP, 2.0, 85),
+          originalEtaMin: 0,
+        },
+        {
+          id: "S_M_P3",
+          passengerId: "P003",
+          type: "PICKUP",
+          location: offsetBy(CP, 2.6, 88),
+          originalEtaMin: 0,
+        },
+        {
+          id: "S_M_D2",
+          passengerId: "P002",
+          type: "DROP",
+          location: offsetBy(CP, 4.0, 90),
+          originalEtaMin: 0,
+        },
+        {
+          id: "S_M_D3",
+          passengerId: "P003",
+          type: "DROP",
+          location: offsetBy(CP, 5.5, 92),
+          originalEtaMin: 0,
+        },
       ]),
     ];
 
@@ -192,8 +226,20 @@ const vehicleCapacityTest: ScenarioPreset = {
     const rides = [
       makeRide("R_CAP", "D001", [
         // Both riders are aboard; the first drop is what creates room.
-        { id: "S_C_D1", passengerId: "P001", type: "DROP", location: offsetBy(CP, 1.2, 45) },
-        { id: "S_C_D2", passengerId: "P002", type: "DROP", location: offsetBy(CP, 3.0, 50) },
+        {
+          id: "S_C_D1",
+          passengerId: "P001",
+          type: "DROP",
+          location: offsetBy(CP, 1.2, 45),
+          originalEtaMin: 0,
+        },
+        {
+          id: "S_C_D2",
+          passengerId: "P002",
+          type: "DROP",
+          location: offsetBy(CP, 3.0, 50),
+          originalEtaMin: 0,
+        },
       ]),
     ];
 
@@ -235,8 +281,20 @@ const routeDetourTest: ScenarioPreset = {
   build: () => {
     const rides = [
       makeRide("R_WEST", "D001", [
-        { id: "S_W_P", passengerId: "P001", type: "PICKUP", location: offsetBy(CP, 1.5, 270) },
-        { id: "S_W_D", passengerId: "P001", type: "DROP", location: offsetBy(CP, 3.5, 270) },
+        {
+          id: "S_W_P",
+          passengerId: "P001",
+          type: "PICKUP",
+          location: offsetBy(CP, 1.5, 270),
+          originalEtaMin: 0,
+        },
+        {
+          id: "S_W_D",
+          passengerId: "P001",
+          type: "DROP",
+          location: offsetBy(CP, 3.5, 270),
+          originalEtaMin: 0,
+        },
       ]),
     ];
 
