@@ -21,7 +21,18 @@ export class OptimizeToursEngine implements OptimizerEngine {
 
   constructor(
     private readonly endpoint: string = OPTIMIZER_ENDPOINT,
-    private readonly fetchImpl: typeof fetch = fetch,
+    /**
+     * Defaults to a wrapper, not the bare `fetch` identifier. Storing `fetch`
+     * itself as an instance field and calling it as `this.fetchImpl(...)`
+     * changes its receiver from `window`/`globalThis` to this class instance;
+     * browsers brand-check `fetch` and throw `TypeError: Illegal invocation`
+     * the moment that happens. The arrow wrapper below re-issues the call as
+     * a bare identifier, so `fetch` sees its expected receiver again. Do not
+     * "simplify" this back to `fetchImpl: typeof fetch = fetch` — that
+     * reintroduces the bug, and only in the browser: Node's fetch has no such
+     * check, so it would pass every test while breaking under `bun run dev`.
+     */
+    private readonly fetchImpl: typeof fetch = (input, init) => fetch(input, init),
   ) {}
 
   async optimize(request: OptimizeToursRequest): Promise<OptimizeToursResult> {
