@@ -131,3 +131,114 @@ export function offsetBy(origin: LatLng, distanceKm: number, bearingDegrees: num
     lng: ((toDegrees(lng2) + 540) % 360) - 180,
   };
 }
+
+/**
+ * Local planar approximation of a lat/lng pair, in kilometres, around an
+ * anchor point.
+ *
+ * Point-to-segment projection has no closed form on a sphere. Over the few
+ * kilometres a route corridor spans, flattening to a local tangent plane is
+ * accurate to well under the H3 cell size we compare against, and it makes the
+ * projection a two-line dot product instead of a spherical solve.
+ */
+function toLocalKm(point: LatLng, anchor: LatLng): { x: number; y: number } {
+  const latRad = (anchor.lat * Math.PI) / 180;
+  const kmPerDegLat = (Math.PI * EARTH_RADIUS_KM) / 180;
+  const kmPerDegLng = kmPerDegLat * Math.cos(latRad);
+
+  return {
+    x: (point.lng - anchor.lng) * kmPerDegLng,
+    y: (point.lat - anchor.lat) * kmPerDegLat,
+  };
+}
+
+/** Fraction along `a → b` at which `p` projects, clamped to the segment. */
+function segmentProjectionFraction(p: LatLng, a: LatLng, b: LatLng): number {
+  const pa = toLocalKm(p, a);
+  const ba = toLocalKm(b, a);
+  const lengthSquared = ba.x * ba.x + ba.y * ba.y;
+
+  if (lengthSquared === 0) {
+    return 0;
+  }
+
+  const t = (pa.x * ba.x + pa.y * ba.y) / lengthSquared;
+  return Math.min(1, Math.max(0, t));
+}
+
+function interpolate(a: LatLng, b: LatLng, t: number): LatLng {
+  return { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t };
+}
+
+/**
+ * Minimum distance from a point to a polyline, in kilometres.
+ *
+ * This is a cheap geometric approximation of "how far off the route is this
+ * pickup", never the real detour: a pickup 500 m off the line can cost a 1 km
+ * round trip once one-way streets and medians are involved. Only stage 8 knows
+ * the real number.
+ */
+export function pointToPolylineKm(point: LatLng, polyline: readonly LatLng[]): number {
+  if (polyline.length === 0) {
+    return Infinity;
+  }
+
+  if (polyline.length === 1) {
+    return haversineKm(point, polyline[0]!);
+  }
+
+  let best = Infinity;
+
+  for (let index = 0; index < polyline.length - 1; index += 1) {
+    const a = polyline[index]!;
+    const b = polyline[index + 1]!;
+    const nearest = interpolate(a, b, segmentProjectionFraction(point, a, b));
+    best = Math.min(best, haversineKm(point, nearest));
+  }
+
+  return best;
+}
+
+/**
+ * Distance along the polyline, from its start, of the point nearest to `point`.
+ *
+ * Stage 4 uses this to answer "is this destination ahead of the vehicle or
+ * behind it" — a question raw proximity cannot answer, and the reason a pickup
+ * sitting on the historical route must still be rejected.
+ */
+export function projectOnPolylineKm(point: LatLng, polyline: readonly LatLng[]): number {
+  if (polyline.length < 2) {
+    return 0;
+  }
+
+  let bestDistance = Infinity;
+  let bestAlong = 0;
+  let cumulative = 0;
+
+  for (let index = 0; index < polyline.length - 1; index += 1) {
+    const a = polyline[index]!;
+    const b = polyline[index + 1]!;
+    const segmentKm = haversineKm(a, b);
+    const t = segmentProjectionFraction(point, a, b);
+    const nearest = interpolate(a, b, t);
+    const distance = haversineKm(point, nearest);
+
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestAlong = cumulative + segmentKm * t;
+    }
+
+    cumulative += segmentKm;
+  }
+
+  return bestAlong;
+}
+
+/** Start-to-end bearing of a polyline, or null if it has fewer than two points. */
+export function polylineBearingDeg(polyline: readonly LatLng[]): number | null {
+  if (polyline.length < 2) {
+    return null;
+  }
+
+  return bearingDeg(polyline[0]!, polyline[polyline.length - 1]!);
+}
