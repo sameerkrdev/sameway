@@ -19,13 +19,16 @@ export const OPTIMIZER_ENDPOINT = "/api/optimize-tours";
 export class OptimizeToursEngine implements OptimizerEngine {
   readonly kind = "GOOGLE_OPTIMIZE_TOURS" as const;
 
-  constructor(private readonly endpoint: string = OPTIMIZER_ENDPOINT) {}
+  constructor(
+    private readonly endpoint: string = OPTIMIZER_ENDPOINT,
+    private readonly fetchImpl: typeof fetch = fetch,
+  ) {}
 
   async optimize(request: OptimizeToursRequest): Promise<OptimizeToursResult> {
     let response: Response;
 
     try {
-      response = await fetch(this.endpoint, {
+      response = await this.fetchImpl(this.endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(request),
@@ -51,10 +54,29 @@ export class OptimizeToursEngine implements OptimizerEngine {
       );
     }
 
-    return readOptimizeToursResponse(request, await safeJson(response));
+    let body: unknown;
+
+    try {
+      body = await response.json();
+    } catch (error) {
+      throw new OptimizerUnavailableError(
+        "Optimizer proxy returned a 2xx response with an unparseable body.",
+        error,
+      );
+    }
+
+    return readOptimizeToursResponse(request, body);
   }
 }
 
+/**
+ * Only for the error-body branches (503 / !response.ok), where a missing or
+ * unparseable body is not itself the problem — the status code already told
+ * us what went wrong, and this merely tries to enrich the message with an
+ * `.error` string if one happens to be present. Never use this on the success
+ * path: there, a parse failure IS the problem and must not be swallowed into
+ * a fake "nothing to schedule" result.
+ */
 async function safeJson(response: Response): Promise<unknown> {
   try {
     return await response.json();
