@@ -36,7 +36,7 @@
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `Passenger.maxPickupDelayMin: number`, `Passenger.maxDropDelayMin: number`, `Stop.originalEtaMin: number`, `SCENARIO_SCHEMA_VERSION = 2`, `migrateScenario(input: unknown): ScenarioParseResult`, and `DEFAULT_PASSENGER_DELAY_BUDGETS`.
+- Produces: `Passenger.maxPickupDelayMin: number`, `Passenger.maxDropDelayMin: number`, `Stop.originalEtaMin: number`, `SCENARIO_SCHEMA_VERSION = 2`, and a private `migrateToV2(input: unknown): unknown` called from inside `parseScenario` — migration runs before validation, so it is not a separate exported entry point.
 
 - [ ] **Step 1: Write the failing test**
 
