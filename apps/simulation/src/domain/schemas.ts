@@ -180,12 +180,23 @@ interface V1Stop {
   originalEtaMin?: number;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 /**
  * Upgrades a v1 scenario in place before validation.
  *
  * Migration runs before the schema rather than after, so a v1 document is
  * never reported to the user as "invalid" for lacking fields that did not
  * exist when it was exported.
+ *
+ * A v1 document is untrusted input: `passengers` might not be an array,
+ * `rides` might contain `null`, a stop might be a string. Every loop below
+ * guards its own shape assumption so a structurally broken document falls
+ * through to zod (and comes back as `{ ok: false, errors: [...] }`) instead
+ * of throwing out of this function and escaping the `ScenarioParseResult`
+ * contract `parseScenario` promises its callers.
  */
 function migrateToV2(input: unknown): unknown {
   if (typeof input !== "object" || input === null) {
@@ -198,33 +209,55 @@ function migrateToV2(input: unknown): unknown {
   }
 
   const clone = structuredClone(document);
-  const settings = (clone.settings ?? {}) as Record<string, number>;
+  const settings = isRecord(clone.settings) ? (clone.settings as Record<string, number>) : {};
   const pickupBudget = settings.maxNewPassengerPickupDelayMin ?? 6;
   const dropBudget = settings.maxExistingPassengerDelayMin ?? 8;
 
   clone.schemaVersion = 2;
 
-  for (const passenger of (clone.passengers ?? []) as V1Passenger[]) {
-    passenger.maxPickupDelayMin ??= pickupBudget;
-    passenger.maxDropDelayMin ??= dropBudget;
-  }
-
-  for (const ride of (clone.rides ?? []) as { stops?: V1Stop[] }[]) {
-    let cumulativeKm = 0;
-    let previous: { lat: number; lng: number } | null = null;
-
-    for (const stop of ride.stops ?? []) {
-      if (previous) {
-        cumulativeKm += haversineKm(previous, stop.location);
+  if (Array.isArray(clone.passengers)) {
+    for (const passenger of clone.passengers as V1Passenger[]) {
+      if (!isRecord(passenger)) {
+        continue;
       }
-      previous = stop.location;
-      stop.originalEtaMin ??= cumulativeKm * MIGRATION_MINUTES_PER_KM;
+      passenger.maxPickupDelayMin ??= pickupBudget;
+      passenger.maxDropDelayMin ??= dropBudget;
     }
   }
 
-  for (const request of (clone.requests ?? []) as { intermediateStops?: V1Stop[] }[]) {
-    for (const stop of request.intermediateStops ?? []) {
-      stop.originalEtaMin ??= 0;
+  if (Array.isArray(clone.rides)) {
+    for (const ride of clone.rides as { stops?: V1Stop[] }[]) {
+      if (!isRecord(ride) || !Array.isArray(ride.stops)) {
+        continue;
+      }
+
+      let cumulativeKm = 0;
+      let previous: { lat: number; lng: number } | null = null;
+
+      for (const stop of ride.stops) {
+        if (!isRecord(stop) || !isRecord(stop.location)) {
+          continue;
+        }
+        if (previous) {
+          cumulativeKm += haversineKm(previous, stop.location as { lat: number; lng: number });
+        }
+        previous = stop.location as { lat: number; lng: number };
+        stop.originalEtaMin ??= cumulativeKm * MIGRATION_MINUTES_PER_KM;
+      }
+    }
+  }
+
+  if (Array.isArray(clone.requests)) {
+    for (const request of clone.requests as { intermediateStops?: V1Stop[] }[]) {
+      if (!isRecord(request) || !Array.isArray(request.intermediateStops)) {
+        continue;
+      }
+      for (const stop of request.intermediateStops) {
+        if (!isRecord(stop)) {
+          continue;
+        }
+        stop.originalEtaMin ??= 0;
+      }
     }
   }
 

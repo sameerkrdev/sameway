@@ -115,4 +115,22 @@ describe("scenario schema v2", () => {
     if (result.ok) return;
     expect(result.errors.join("\n")).toContain("maxPickupDelayMin");
   });
+
+  it("rejects a v1 document with a non-array passengers field instead of throwing", () => {
+    const broken = v1Scenario() as Record<string, unknown>;
+    broken.passengers = "corrupt";
+
+    expect(() => parseScenario(broken)).not.toThrow();
+    const result = parseScenario(broken);
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a v1 document with a null entry in rides instead of throwing", () => {
+    const broken = v1Scenario() as Record<string, unknown>;
+    broken.rides = [null];
+
+    expect(() => parseScenario(broken)).not.toThrow();
+    const result = parseScenario(broken);
+    expect(result.ok).toBe(false);
+  });
 });
