@@ -1,7 +1,7 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "extends": ["//"],
-  "globalEnv": ["GOOGLE_CLOUD_PROJECT"],
+  "globalEnv": ["GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -16,7 +16,7 @@
       "outputs": []
     },
     "dev": {
-      "env": ["GOOGLE_CLOUD_PROJECT"],
+      "env": ["GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS"],
       "cache": false,
       "persistent": true
     }

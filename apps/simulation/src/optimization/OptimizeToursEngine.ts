@@ -12,9 +12,10 @@ export const OPTIMIZER_ENDPOINT = "/api/optimize-tours";
 /**
  * Talks to `OptimizeTours` through the dev-server proxy.
  *
- * The browser never holds a credential: the proxy signs the request with
- * Application Default Credentials server-side. That is why this engine is
- * reachable only under `bun run dev` — a built bundle has no proxy behind it.
+ * The browser never holds a credential: the proxy signs the request with a
+ * service account key (GOOGLE_APPLICATION_CREDENTIALS) server-side. That is
+ * why this engine is reachable only under `bun run dev` — a built bundle has
+ * no proxy behind it.
  */
 export class OptimizeToursEngine implements OptimizerEngine {
   readonly kind = "GOOGLE_OPTIMIZE_TOURS" as const;

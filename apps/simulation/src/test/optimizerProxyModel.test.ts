@@ -1,0 +1,138 @@
+import { describe, expect, it } from "vitest";
+
+import { toShipmentModel, type ProxyRequest } from "../../server/optimizerProxy";
+
+/**
+ * The wire format OptimizeTours actually accepts.
+ *
+ * These are validation rules, not preferences: the API rejects the whole
+ * request with "Violation in ...: `nanos` must be unset" for a fractional
+ * timestamp, and "invalid duration" for a sub-second timeout. Both were live
+ * bugs — every run failed with OPTIMIZER_CALL_FAILED at stage 8 — and neither
+ * is visible from any unit test of our own types, because our own types are
+ * fine. Only the translation is wrong.
+ *
+ * Asserted by sweeping the built payload rather than by naming the four fields
+ * we know about, so a timestamp added later is covered without anyone
+ * remembering to extend this.
+ */
+function collectStrings(value: unknown, path = "$"): { path: string; value: string }[] {
+  if (typeof value === "string") {
+    return [{ path, value }];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((entry, index) => collectStrings(entry, `${path}[${String(index)}]`));
+  }
+
+  if (value !== null && typeof value === "object") {
+    return Object.entries(value).flatMap(([key, entry]) =>
+      collectStrings(entry, `${path}.${key}`),
+    );
+  }
+
+  return [];
+}
+
+// 14:23:45.678 — deliberately off a second boundary, which is the normal case:
+// deadlines are fractional minutes, so the instant almost never lands on one.
+const NOW_MS = Date.UTC(2026, 7, 23, 14, 23, 45, 678);
+
+const request: ProxyRequest = {
+  vehicleStart: { lat: 28.6, lng: 77.2 },
+  seatCapacity: 4,
+  timeoutMs: 400,
+  shipments: [
+    {
+      id: "ship_pA",
+      pickup: { lat: 28.6, lng: 77.22 },
+      drop: { lat: 28.6, lng: 77.34 },
+      seats: 1,
+      // Fractional minutes, as every real deadline is.
+      pickupDeadlineMin: 7.317,
+      dropDeadlineMin: 31.883,
+      penaltyCost: null,
+    },
+    {
+      id: "ship_pNew",
+      pickup: { lat: 28.6, lng: 77.26 },
+      drop: { lat: 28.6, lng: 77.31 },
+      seats: 1,
+      penaltyCost: 100,
+      softPickupDeadlineMin: 6.5,
+      softDeadlineCostPerHour: 50,
+    },
+  ],
+  lockedVisits: [
+    { shipmentId: "ship_pA", type: "PICKUP" },
+    { shipmentId: "ship_pA", type: "DROP" },
+  ],
+};
+
+describe("OptimizeTours wire format", () => {
+  it("emits no timestamp with a fractional second anywhere in the payload", () => {
+    const payload = toShipmentModel(request, NOW_MS);
+
+    const timestamps = collectStrings(payload).filter((entry) =>
+      /^\d{4}-\d{2}-\d{2}T/.test(entry.value),
+    );
+
+    // Guard the guard: if the payload stops containing timestamps this test
+    // would pass by vacuously finding none.
+    expect(timestamps.length).toBeGreaterThanOrEqual(4);
+
+    for (const { path, value } of timestamps) {
+      expect(value, path).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+    }
+  });
+
+  it("truncates rather than rounds, so a deadline is never moved later", () => {
+    const payload = toShipmentModel(request, NOW_MS);
+    const model = payload.model as Record<string, unknown>;
+
+    // 14:23:45.678 + 0 min → 14:23:45, not 14:23:46.
+    expect(model.globalStartTime).toBe("2026-08-23T14:23:45Z");
+    // + 7.317 min = 14:31:04.698 → 14:31:04.
+    const shipments = model.shipments as Record<string, unknown>[];
+    const pickup = (shipments[0]!.pickups as Record<string, unknown>[])[0]!;
+    const windows = pickup.timeWindows as Record<string, unknown>[];
+
+    expect(windows[0]!.endTime).toBe("2026-08-23T14:31:04Z");
+  });
+
+  it("sends the solver timeout as a whole-second Duration", () => {
+    // 400 ms was the default and produced "0.4s", which the API rejects.
+    expect(toShipmentModel(request, NOW_MS).timeout).toBe("1s");
+    expect(toShipmentModel({ ...request, timeoutMs: 2400 }, NOW_MS).timeout).toBe("3s");
+    expect(toShipmentModel({ ...request, timeoutMs: 9_000_000 }, NOW_MS).timeout).toBe("1800s");
+  });
+
+  it("omits penaltyCost entirely for a mandatory shipment", () => {
+    const model = toShipmentModel(request, NOW_MS).model as Record<string, unknown>;
+    const shipments = model.shipments as Record<string, unknown>[];
+
+    // null would be rejected; absence is how the API spells "mandatory".
+    expect("penaltyCost" in shipments[0]!).toBe(false);
+    expect(shipments[1]!.penaltyCost).toBe(100);
+  });
+
+  it("resolves locked visits to shipment indices in order", () => {
+    const payload = toShipmentModel(request, NOW_MS);
+    const constraint = payload.injectedSolutionConstraint as Record<string, unknown>;
+    const routes = constraint.routes as Record<string, unknown>[];
+
+    expect((routes[0]!.visits as unknown[])).toEqual([
+      { shipmentIndex: 0, isPickup: true },
+      { shipmentIndex: 0, isPickup: false },
+    ]);
+  });
+
+  it("rejects a locked visit naming a shipment that is not in the model", () => {
+    expect(() =>
+      toShipmentModel(
+        { ...request, lockedVisits: [{ shipmentId: "ship_ghost", type: "PICKUP" }] },
+        NOW_MS,
+      ),
+    ).toThrow(/ship_ghost/);
+  });
+});

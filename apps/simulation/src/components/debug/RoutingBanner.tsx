@@ -16,14 +16,14 @@ export function RoutingBanner() {
   // Credentials come first: a run that could not reach the solver produced no
   // opinion about any driver, which is a more severe thing to be unaware of
   // than synthetic distances.
-  if (error && /credential|application default|gcloud/i.test(error)) {
+  if (error && /credential|GOOGLE_APPLICATION_CREDENTIALS|GOOGLE_CLOUD_PROJECT/i.test(error)) {
     return (
       <div className="flex items-start gap-2 border-b border-[var(--fail)] bg-[color-mix(in_oklab,var(--fail)_14%,transparent)] px-3 py-1.5">
         <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-[var(--fail)]" aria-hidden />
         <p className="text-[11px]">
-          <span className="font-semibold">Route Optimization is unavailable.</span> Run{" "}
-          <code>gcloud auth application-default login</code> and set{" "}
-          <code>GOOGLE_CLOUD_PROJECT</code> in <code>apps/simulation/.env.local</code>, then restart{" "}
+          <span className="font-semibold">Route Optimization is unavailable.</span> Set{" "}
+          <code>GOOGLE_CLOUD_PROJECT</code> and <code>GOOGLE_APPLICATION_CREDENTIALS</code> (path to
+          a service account JSON key) in <code>apps/simulation/.env.local</code>, then restart{" "}
           <code>bun run dev</code>. The optimizer proxy only exists in the dev server — a built
           bundle cannot reach it.
         </p>

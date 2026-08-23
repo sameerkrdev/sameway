@@ -89,7 +89,7 @@ export interface OptimizerTelemetrySnapshot {
 }
 
 /**
- * Thrown when the proxy has no usable Application Default Credentials.
+ * Thrown when the proxy has no usable credentials (missing project id or key).
  *
  * This is deliberately distinct from every other failure: it aborts the whole
  * run rather than producing per-driver verdicts, because a run with no solver

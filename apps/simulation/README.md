@@ -64,19 +64,17 @@ Stage 8 sends each candidate driver to Google's `OptimizeTours`. That API is
 server-side only — it needs OAuth2 credentials and does not support browser
 CORS — so the dev server proxies it at `POST /api/optimize-tours`.
 
-Authenticate once with Application Default Credentials:
-
-```bash
-gcloud auth application-default login
-```
-
-and set the project in `apps/simulation/.env.local`:
+Create a service account on a Cloud project with the **Route Optimization API**
+enabled, download a JSON key, and add both values to `apps/simulation/.env.local`:
 
 ```
 GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_APPLICATION_CREDENTIALS=C:/path/to/service-account-key.json
 ```
 
-Enable the **Route Optimization API** on that project.
+Store the key file outside the repo or in a gitignored path. Never commit it.
+Use an absolute path on Windows; a path relative to `apps/simulation` also works
+when you start dev from that directory.
 
 No key material is ever committed or sent to the browser: the proxy signs each
 request server-side and forwards only the solution.

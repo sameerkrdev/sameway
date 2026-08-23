@@ -1,12 +1,13 @@
+import { resolve, isAbsolute } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { GoogleAuth } from "google-auth-library";
-import type { Plugin } from "vite";
+import { loadEnv, type Plugin } from "vite";
 
 const ENDPOINT_PATH = "/api/optimize-tours";
 const SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 
-interface ProxyShipment {
+export interface ProxyShipment {
   id: string;
   pickup: { lat: number; lng: number };
   drop: { lat: number; lng: number };
@@ -18,7 +19,7 @@ interface ProxyShipment {
   softDeadlineCostPerHour?: number;
 }
 
-interface ProxyRequest {
+export interface ProxyRequest {
   vehicleStart: { lat: number; lng: number };
   seatCapacity: number;
   shipments: ProxyShipment[];
@@ -26,7 +27,29 @@ interface ProxyRequest {
   timeoutMs: number;
 }
 
-const auth = new GoogleAuth({ scopes: [SCOPE] });
+function resolveCredentialsPath(envDir: string, credentialsPath: string): string {
+  return isAbsolute(credentialsPath) ? credentialsPath : resolve(envDir, credentialsPath);
+}
+
+/**
+ * Vite only exposes VITE_* vars to client code; server middleware must load
+ * .env files itself via loadEnv (same merge order as the rest of the app).
+ */
+function loadOptimizerEnv(mode: string, envDir: string): {
+  project: string | undefined;
+  credentialsPath: string | undefined;
+} {
+  const env = loadEnv(mode, envDir, "");
+  const project = env.GOOGLE_CLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT;
+  const credentialsPath =
+    env.GOOGLE_APPLICATION_CREDENTIALS ?? process.env.GOOGLE_APPLICATION_CREDENTIALS;
+
+  if (credentialsPath) {
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = resolveCredentialsPath(envDir, credentialsPath);
+  }
+
+  return { project, credentialsPath };
+}
 
 /**
  * Thrown when the request body itself is malformed — a bad value from our own
@@ -35,8 +58,22 @@ const auth = new GoogleAuth({ scopes: [SCOPE] });
  */
 class ProxyBadRequestError extends Error {}
 
+/**
+ * RFC 3339 whole-second timestamps only. OptimizeTours rejects fractional
+ * seconds (`nanos must be unset`), and `Date.toISOString()` always emits ms.
+ */
 function isoAt(baseMs: number, offsetMin: number): string {
-  return new Date(baseMs + offsetMin * 60000).toISOString();
+  const wholeSecondMs = Math.floor((baseMs + offsetMin * 60000) / 1000) * 1000;
+  return new Date(wholeSecondMs).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+/**
+ * Protobuf Duration as whole seconds in [1, 1800]. OptimizeTours rejects
+ * sub-second values (`"0.4s"` from the old 400ms default → `invalid duration`).
+ */
+function durationFromMs(timeoutMs: number): string {
+  const seconds = Math.min(1800, Math.max(1, Math.ceil(timeoutMs / 1000)));
+  return `${String(seconds)}s`;
 }
 
 /**
@@ -47,7 +84,10 @@ function isoAt(baseMs: number, offsetMin: number): string {
  * — anchoring per-shipment would let clock drift between two shipments produce
  * a model that is subtly infeasible for no reason we could ever debug.
  */
-function toShipmentModel(request: ProxyRequest, nowMs: number): Record<string, unknown> {
+export function toShipmentModel(
+  request: ProxyRequest,
+  nowMs: number,
+): Record<string, unknown> {
   const shipments = request.shipments.map((shipment) => {
     const pickupVisit: Record<string, unknown> = {
       arrivalWaypoint: { location: { latLng: { latitude: shipment.pickup.lat, longitude: shipment.pickup.lng } } },
@@ -116,7 +156,7 @@ function toShipmentModel(request: ProxyRequest, nowMs: number): Record<string, u
     shipments,
   };
 
-  const payload: Record<string, unknown> = { timeout: `${String(request.timeoutMs / 1000)}s`, model };
+  const payload: Record<string, unknown> = { timeout: durationFromMs(request.timeoutMs), model };
 
   if (request.lockedVisits.length > 0) {
     payload.injectedSolutionConstraint = {
@@ -176,6 +216,9 @@ export function optimizerProxyPlugin(): Plugin {
   return {
     name: "sameway-optimizer-proxy",
     configureServer(server) {
+      const envDir = typeof server.config.envDir === "string" ? server.config.envDir : process.cwd();
+      const optimizerEnv = loadOptimizerEnv(server.config.mode, envDir);
+
       server.middlewares.use(ENDPOINT_PATH, (req, res, next) => {
         if (req.method !== "POST") {
           next();
@@ -183,7 +226,7 @@ export function optimizerProxyPlugin(): Plugin {
         }
 
         void (async () => {
-          const project = process.env.GOOGLE_CLOUD_PROJECT;
+          const project = optimizerEnv.project;
 
           if (!project) {
             send(res, 503, {
@@ -193,12 +236,21 @@ export function optimizerProxyPlugin(): Plugin {
             return;
           }
 
+          if (!optimizerEnv.credentialsPath) {
+            send(res, 503, {
+              error:
+                "GOOGLE_APPLICATION_CREDENTIALS is not set. Add a service account JSON key path to apps/simulation/.env.local and restart the dev server.",
+            });
+            return;
+          }
+
           let client;
           try {
+            const auth = new GoogleAuth({ scopes: [SCOPE] });
             client = await auth.getClient();
           } catch (error) {
             send(res, 503, {
-              error: `No Application Default Credentials found. Run \`gcloud auth application-default login\`. (${
+              error: `No credentials found. Set GOOGLE_APPLICATION_CREDENTIALS in apps/simulation/.env.local to a service account JSON key path. (${
                 error instanceof Error ? error.message : "unknown error"
               })`,
             });

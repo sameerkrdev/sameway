@@ -281,8 +281,16 @@ Request shape per driver:
   arrives as `skippedShipments[]` rather than a failed request.
 - **`injectedSolutionConstraint`** — the committed spine as fixed visits, with
   `RELAX_ALL_AFTER_THRESHOLD` at `thresholdVisitCount = spineLength`.
-- **`timeout`** — from settings, defaulting to `400ms`, matching the Overview's
-  matching budget.
+- **`timeout`** — from settings. This was specified as `400ms` to match the
+  Overview's 100–500ms matching budget, and that turned out to be unsendable:
+  `OptimizeTours` takes a protobuf `Duration` and rejects sub-second values, so
+  `"0.4s"` came back as `invalid duration` and every run failed at stage 8. The
+  floor is one second and the default is now `10s`.
+
+  Worth carrying back to the Overview: a per-driver solver call cannot fit
+  inside a 100–500ms budget at all, whatever we set. The budget and the vendor
+  are in conflict, and the hybrid routing path in the Overview's Phase 3 — where
+  spine=1 is solved in-house — is the only thing that resolves it.
 
 Outcome per driver:
 
