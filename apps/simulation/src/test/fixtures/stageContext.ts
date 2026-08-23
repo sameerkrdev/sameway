@@ -12,6 +12,7 @@ import type { RideCorridor } from "@/matching/corridor";
 import type {
   DriverMetrics,
   MatchingContext,
+  RouteInsertionCandidate,
   RouteInsertionResult,
   ScoreBreakdown,
 } from "@/matching/types";
@@ -148,6 +149,7 @@ export function makeContext(input: MakeContextInput): MatchingContext & {
 
   const metrics = new Map<string, DriverMetrics>();
   const corridors = new Map<string, RideCorridor>();
+  const sequences = new Map<string, RouteInsertionCandidate[]>();
   const insertions = new Map<string, RouteInsertionResult>();
   const scores = new Map<string, ScoreBreakdown>();
 
@@ -168,6 +170,10 @@ export function makeContext(input: MakeContextInput): MatchingContext & {
     getCorridor: (id) => corridors.get(id),
     setCorridor: (id, corridor) => {
       corridors.set(id, corridor);
+    },
+    getSequences: (id) => sequences.get(id) ?? [],
+    setSequences: (id, candidates) => {
+      sequences.set(id, candidates);
     },
     recordMetrics: (id, patch) => {
       metrics.set(id, { ...(metrics.get(id) ?? {}), ...patch });

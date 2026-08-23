@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_SETTINGS } from "@/domain/settings";
-import { enumerateInsertions, findBestInsertion } from "@/matching/routeInsertion";
+import { enumerateInsertions } from "@/matching/insertion";
+import { findBestInsertion } from "@/matching/routeInsertion";
 import type { ProposedStop } from "@/matching/types";
 import { MockRoutingEngine } from "@/routing/MockRoutingEngine";
 

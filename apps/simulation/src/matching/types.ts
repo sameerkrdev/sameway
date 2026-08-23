@@ -46,6 +46,10 @@ export interface DriverMetrics {
   flexibleStopCount?: number;
   tightestDelayBudgetMin?: number;
 
+  // Sequence generation
+  enumeratedSequences?: number;
+  capacityFeasibleSequences?: number;
+
   // Capacity
   totalSeats?: number;
   committedSeats?: number;
@@ -276,6 +280,10 @@ export interface MatchingContext {
 
   /** Stage 2 only. Publishes the corridors every later stage reads. */
   setCorridor(driverId: string, corridor: RideCorridor): void;
+
+  /** Candidate orderings published by stage 5 and narrowed by stages 6 and 7. */
+  getSequences(driverId: string): RouteInsertionCandidate[];
+  setSequences(driverId: string, candidates: RouteInsertionCandidate[]): void;
 
   /** Merges into the driver's accumulated metrics. */
   recordMetrics(driverId: string, metrics: DriverMetrics): void;

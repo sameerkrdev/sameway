@@ -21,6 +21,7 @@ import type {
   MatchingStage,
   MatchingSummary,
   RejectionGroup,
+  RouteInsertionCandidate,
   RouteInsertionResult,
   ScoreBreakdown,
   StageResult,
@@ -53,6 +54,8 @@ export async function runMatching(options: RunMatchingOptions): Promise<Matching
   // Stage 2 builds these once; every later stage reads the remaining route
   // from here rather than rebuilding it per stage.
   const corridors = new Map<string, RideCorridor>();
+  // Stage 5 publishes candidate orderings here; stages 6, 7 and 8 narrow them.
+  const sequences = new Map<string, RouteInsertionCandidate[]>();
 
   let liveDriverIds: string[] = [...allDriverIds];
   let requestRejection: MatchReason | undefined;
@@ -75,6 +78,7 @@ export async function runMatching(options: RunMatchingOptions): Promise<Matching
       ledger,
       lookups,
       corridors,
+      sequences,
     });
 
     const outcome = await stage.execute(context);
@@ -90,8 +94,7 @@ export async function runMatching(options: RunMatchingOptions): Promise<Matching
 
     // A stage may discover a candidate set rather than filter one, in which
     // case drivers it did not surface are failed here rather than passing by
-    // default. DORMANT: no stage emits `candidateDriverIds` while stage 2 is a
-    // placeholder. Task 11 re-arms this by returning the corridor match set.
+    // default. Stage 2 is the one such stage today.
     const candidateSet = outcome.candidateDriverIds
       ? new Set(outcome.candidateDriverIds)
       : undefined;
@@ -211,6 +214,7 @@ function createContext(input: {
   ledger: EvaluationLedger;
   lookups: ScenarioLookups;
   corridors: Map<string, RideCorridor>;
+  sequences: Map<string, RouteInsertionCandidate[]>;
 }): MatchingContext {
   const { scenario, request, settings, routing, liveDriverIds, ledger, lookups } = input;
 
@@ -231,6 +235,11 @@ function createContext(input: {
     },
     getMetrics: (driverId: string): DriverMetrics => ledger.getMetrics(driverId),
     getCorridor: (driverId: string): RideCorridor | undefined => input.corridors.get(driverId),
+    getSequences: (driverId: string): RouteInsertionCandidate[] =>
+      input.sequences.get(driverId) ?? [],
+    setSequences: (driverId: string, candidates: RouteInsertionCandidate[]): void => {
+      input.sequences.set(driverId, candidates);
+    },
     setCorridor: (driverId: string, corridor: RideCorridor): void => {
       input.corridors.set(driverId, corridor);
     },

@@ -4446,7 +4446,7 @@ git commit -m "feat(simulation): stage 4 direction and destination compatibility
 
 ---
 
-## Task 14: Stage 5 — Legal stop sequences
+## Task 14: Stage 5 — Legal stop sequences — LANDED
 
 **Files:**
 - Create: `src/matching/insertion/enumerate.ts`
@@ -4462,7 +4462,7 @@ git commit -m "feat(simulation): stage 4 direction and destination compatibility
   - `MatchingContext.getSequences(driverId): RouteInsertionCandidate[]` and `setSequences(driverId, candidates)` — stages 6, 7 and 8 read them.
   - `DriverMetrics.enumeratedSequences?`, `capacityFeasibleSequences?`.
 
-- [ ] **Step 1: Move the enumerator**
+- [x] **Step 1: Move the enumerator**
 
 Create `src/matching/insertion/enumerate.ts` and move `enumerateInsertions` into it **verbatim** from `src/matching/routeInsertion.ts`, including its doc comment. Then re-export it from `src/matching/insertion/index.ts`:
 
@@ -4472,7 +4472,7 @@ export { enumerateInsertions } from "./enumerate";
 
 Update `src/test/insertion.test.ts` to import from `@/matching/insertion` instead of `@/matching/routeInsertion`. Its existing assertions — candidate count `(n+1)(n+2)/2`, frozen existing order, pickup before drop — all still apply and must keep passing unchanged.
 
-- [ ] **Step 2: Write the failing stage test**
+- [x] **Step 2: Write the failing stage test**
 
 Create `src/test/stopSequenceGeneration.test.ts`:
 
@@ -4584,12 +4584,12 @@ describe("stopSequenceGeneration", () => {
 });
 ```
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [x] **Step 3: Run the test to verify it fails**
 
 Run: `bun run test src/test/stopSequenceGeneration.test.ts`
 Expected: FAIL — `context.getSequences is not a function`.
 
-- [ ] **Step 4: Add sequence storage to the context**
+- [x] **Step 4: Add sequence storage to the context**
 
 In `src/matching/types.ts`:
 
@@ -4601,7 +4601,7 @@ In `src/matching/types.ts`:
 
 Wire both in `createContext` in `src/matching/engine.ts` against a `Map<string, RouteInsertionCandidate[]>` held for the run, exactly like the corridor map from Task 11. Add the same pair to `src/test/fixtures/stageContext.ts`.
 
-- [ ] **Step 5: Implement the stage**
+- [x] **Step 5: Implement the stage**
 
 Replace `src/matching/stages/stopSequenceGeneration.ts`:
 
@@ -4738,12 +4738,12 @@ Add to `DriverMetrics`:
   capacityFeasibleSequences?: number;
 ```
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `bun run test src/test/stopSequenceGeneration.test.ts src/test/insertion.test.ts`
 Expected: PASS. The moved-enumerator tests must pass unchanged — if they do not, the move was not verbatim.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/matching src/test
