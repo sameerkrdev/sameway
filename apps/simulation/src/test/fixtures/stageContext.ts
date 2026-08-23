@@ -16,9 +16,13 @@ import type {
   RouteInsertionCandidate,
   RouteInsertionResult,
   ScoreBreakdown,
+  SolvedRoute,
 } from "@/matching/types";
+import type { OptimizerEngine } from "@/optimization/types";
 import { MockRoutingEngine } from "@/routing";
 import type { RoutingEngine } from "@/routing/types";
+
+import { StubOptimizerEngine } from "./stubOptimizer";
 
 export interface StubStop {
   id: string;
@@ -47,6 +51,7 @@ export interface MakeContextInput {
   settings?: Partial<MatchingSettings>;
   vehicle?: Partial<Vehicle>;
   routing?: RoutingEngine;
+  optimizer?: OptimizerEngine;
 }
 
 /**
@@ -152,6 +157,7 @@ export function makeContext(input: MakeContextInput): MatchingContext & {
   const corridors = new Map<string, RideCorridor>();
   const sequences = new Map<string, RouteInsertionCandidate[]>();
   const delayBudgets = new Map<string, StopDelayBudget[]>();
+  const solutions = new Map<string, SolvedRoute>();
   const insertions = new Map<string, RouteInsertionResult>();
   const scores = new Map<string, ScoreBreakdown>();
 
@@ -160,6 +166,7 @@ export function makeContext(input: MakeContextInput): MatchingContext & {
     request,
     settings,
     routing: input.routing ?? new MockRoutingEngine(),
+    optimizer: input.optimizer ?? new StubOptimizerEngine(),
     liveDriverIds: [driver.id],
     metrics,
     getDriver: (id) => (id === driver.id ? driver : undefined),
@@ -176,6 +183,10 @@ export function makeContext(input: MakeContextInput): MatchingContext & {
     getSequences: (id) => sequences.get(id) ?? [],
     setSequences: (id, candidates) => {
       sequences.set(id, candidates);
+    },
+    getSolution: (id) => solutions.get(id),
+    setSolution: (id, solution) => {
+      solutions.set(id, solution);
     },
     getDelayBudgets: (id) => delayBudgets.get(id) ?? [],
     setDelayBudgets: (id, budgets) => {

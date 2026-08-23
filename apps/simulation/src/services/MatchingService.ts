@@ -1,5 +1,6 @@
 import type { MatchingSettings, RideRequest, Scenario } from "@/domain/entities";
 import type { MatchingRun } from "@/matching/types";
+import type { OptimizerEngine } from "@/optimization/types";
 import type { RoutingEngine } from "@/routing/types";
 
 export interface FindMatchesInput {
@@ -11,6 +12,8 @@ export interface FindMatchesInput {
    * returning null forces an explicit, visible fallback to mock routing.
    */
   createGoogleEngine?: () => RoutingEngine | null;
+  /** Injected by tests. Production uses the proxy-backed engine. */
+  createOptimizerEngine?: () => OptimizerEngine;
 }
 
 /**

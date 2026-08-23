@@ -10,7 +10,8 @@ import type {
   Vehicle,
 } from "@/domain/entities";
 import { DEFAULT_PASSENGER_DELAY_BUDGETS, DEFAULT_SETTINGS } from "@/domain/settings";
-import { haversineKm, offsetBy } from "@/lib/geo";
+import { offsetBy } from "@/lib/geo";
+import { mockLeg } from "@/routing/MockRoutingEngine";
 
 export const CONNAUGHT_PLACE: LatLng = { lat: 28.6315, lng: 77.2167 };
 export const NOIDA_SECTOR_62: LatLng = { lat: 28.628, lng: 77.3649 };
@@ -84,27 +85,27 @@ function stop(
 
 /**
  * Stamps each stop with the ETA it would have been promised when the ride was
- * committed, walking the sequence from the driver at the settings' estimated
- * speed.
+ * committed, walking the sequence from the driver through the same leg model
+ * the routing engine and the stub solver use.
  *
- * These cannot all be zero. `originalEtaMin` is the promise stages 6, 9, 10 and
- * 12 measure delay against, so a stop 14 km away carrying "promised at minute
- * 0" reads as thirty-five minutes late before anything has been inserted. The
- * arithmetic here matches stage 6's own projection, which is what makes an
- * untouched route come out at zero delay — the correct baseline.
+ * Two things this must get right. `originalEtaMin` cannot be zero for every
+ * stop — it is the promise stages 6, 9, 10 and 12 measure delay against, so a
+ * stop 14 km out carrying "promised at minute 0" reads as thirty-five minutes
+ * late before anything has been inserted. And it must be stamped with the same
+ * road factor and speed curve those stages will measure against: a promise
+ * made from raw straight-line distance is about a third too optimistic, so
+ * every long committed route breaches its own delay budget the moment a solver
+ * looks at it.
  */
 function stampEtas(driverLocation: LatLng, stops: Stop[]): Stop[] {
-  let cumulativeKm = 0;
+  let cumulativeMin = 0;
   let previous = driverLocation;
 
   return stops.map((entry) => {
-    cumulativeKm += haversineKm(previous, entry.location);
+    cumulativeMin += mockLeg(previous, entry.location).durationMin;
     previous = entry.location;
 
-    return {
-      ...entry,
-      originalEtaMin: (cumulativeKm / DEFAULT_SETTINGS.estimatedSpeedKmh) * 60,
-    };
+    return { ...entry, originalEtaMin: cumulativeMin };
   });
 }
 

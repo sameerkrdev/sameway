@@ -5327,7 +5327,7 @@ git commit -m "feat(simulation): stage 7 admissible detour lower bound"
 
 ---
 
-## Task 17: Stage 8 — Road routing via OptimizeTours
+## Task 17: Stage 8 — Road routing via OptimizeTours — LANDED
 
 The largest task in the plan. It wires the optimizer into the engine, replaces the routing done inside `routeInsertion.ts`, and deletes that file.
 
@@ -5361,7 +5361,7 @@ The largest task in the plan. It wires the optimizer into the engine, replaces t
   - `MatchingResult.optimizerTelemetry: OptimizerTelemetrySnapshot`
   - `MatchingRun.optimizerUnavailableReason: string | null`
 
-- [ ] **Step 1: Write the stub optimizer fixture**
+- [x] **Step 1: Write the stub optimizer fixture**
 
 Create `src/test/fixtures/stubOptimizer.ts`:
 
@@ -5553,7 +5553,7 @@ function materialise(request: OptimizeToursRequest, candidate: Candidate): Optim
 }
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Create `src/test/roadRouting.test.ts`:
 
@@ -5699,12 +5699,12 @@ describe("roadRouting", () => {
 });
 ```
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [x] **Step 3: Run the test to verify it fails**
 
 Run: `bun run test src/test/roadRouting.test.ts`
 Expected: FAIL — `context.optimizer` and `context.getSolution` do not exist.
 
-- [ ] **Step 4: Extend the context and result types**
+- [x] **Step 4: Extend the context and result types**
 
 In `src/matching/types.ts` add the `SolvedRoute` interface exactly as given in this task's Interfaces block, then add to `MatchingContext`:
 
@@ -5726,7 +5726,7 @@ and to `MatchingRun`:
   optimizerUnavailableReason: string | null;
 ```
 
-- [ ] **Step 5: Wire the optimizer through the engine**
+- [x] **Step 5: Wire the optimizer through the engine**
 
 In `src/matching/engine.ts`, add `optimizer: OptimizerEngine` and `optimizerTelemetry: () => OptimizerTelemetrySnapshot` to `RunMatchingOptions`, pass `optimizer` into `createContext`, hold a `solutions` map like the corridor map, and include `optimizerTelemetry: options.optimizerTelemetry()` in the returned `MatchingResult`.
 
@@ -5753,7 +5753,7 @@ with `private readonly optimizerCache = new OptimizerCache();` on the class, pas
 
 Add `optimizer`, `getSolution` and `setSolution` to `src/test/fixtures/stageContext.ts`, defaulting `optimizer` to a `StubOptimizerEngine` when the test does not supply one.
 
-- [ ] **Step 6: Implement the stage**
+- [x] **Step 6: Implement the stage**
 
 Replace `src/matching/stages/roadRouting.ts`:
 
@@ -6012,7 +6012,7 @@ async function computeBaseline(
 }
 ```
 
-- [ ] **Step 7: Delete the superseded insertion engine**
+- [x] **Step 7: Delete the superseded insertion engine**
 
 ```bash
 git rm src/matching/routeInsertion.ts
@@ -6020,17 +6020,17 @@ git rm src/matching/routeInsertion.ts
 
 Any remaining import of `findBestInsertion` must go. `enumerateInsertions` now lives in `src/matching/insertion/enumerate.ts` (Task 14).
 
-- [ ] **Step 8: Run the tests**
+- [x] **Step 8: Run the tests**
 
 Run: `bun run check-types && bun run test src/test/roadRouting.test.ts`
 Expected: PASS, all eight cases.
 
-- [ ] **Step 9: Run the whole suite**
+- [x] **Step 9: Run the whole suite**
 
 Run: `bun run check-types && bun run lint && bun run test`
 Expected: green. `src/test/detour.test.ts` asserted on `findBestInsertion`; rewrite its arithmetic assertions against `context.getSolution` in Task 18, or mark them `.skip` here with a comment naming Task 18 — do not delete them.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add -A src

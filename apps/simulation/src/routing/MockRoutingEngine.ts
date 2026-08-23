@@ -31,6 +31,35 @@ export const DEFAULT_MOCK_OPTIONS: MockRoutingOptions = {
 };
 
 /**
+ * One synthetic leg: haversine scaled by the road factor, timed by the
+ * length-dependent speed curve.
+ *
+ * Exported because more than one component has to agree on it. The test
+ * suite's stub optimizer produces solver answers that stage 9 compares against
+ * baselines from this engine, and the Delhi fixture stamps the promised ETAs
+ * those comparisons are measured from. If any of the three used a different
+ * road factor or speed, committed promises would be unachievable the moment
+ * they were made — and the resulting rejections would be artefacts of the test
+ * doubles rather than of the pipeline.
+ */
+export function mockLeg(
+  from: LatLng,
+  to: LatLng,
+  options: MockRoutingOptions = DEFAULT_MOCK_OPTIONS,
+): RouteLegResult {
+  const distanceKm = haversineKm(from, to) * options.roadFactor;
+
+  if (distanceKm === 0) {
+    return { distanceKm: 0, durationMin: 0 };
+  }
+
+  const { minSpeedKmh, maxSpeedKmh, speedRampPerKm } = options;
+  const averageSpeedKmh = Math.min(maxSpeedKmh, minSpeedKmh + distanceKm * speedRampPerKm);
+
+  return { distanceKm, durationMin: (distanceKm / averageSpeedKmh) * 60 };
+}
+
+/**
  * Synthetic routing for development and for the deterministic test suite.
  *
  * Distances are haversine scaled by a constant road factor and durations come
@@ -46,20 +75,8 @@ export class MockRoutingEngine implements RoutingEngine {
 
   constructor(private readonly options: MockRoutingOptions = DEFAULT_MOCK_OPTIONS) {}
 
-  private averageSpeedKmh(distanceKm: number): number {
-    const { minSpeedKmh, maxSpeedKmh, speedRampPerKm } = this.options;
-    return Math.min(maxSpeedKmh, minSpeedKmh + distanceKm * speedRampPerKm);
-  }
-
   private leg(from: LatLng, to: LatLng): RouteLegResult {
-    const distanceKm = haversineKm(from, to) * this.options.roadFactor;
-
-    if (distanceKm === 0) {
-      return { distanceKm: 0, durationMin: 0 };
-    }
-
-    const durationMin = (distanceKm / this.averageSpeedKmh(distanceKm)) * 60;
-    return { distanceKm, durationMin };
+    return mockLeg(from, to, this.options);
   }
 
   getRoute(waypoints: readonly LatLng[], options?: Partial<RouteOptions>): Promise<RouteResult> {

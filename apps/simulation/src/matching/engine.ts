@@ -7,6 +7,7 @@ import type {
   Stop,
   Vehicle,
 } from "@/domain/entities";
+import type { OptimizerEngine, OptimizerTelemetrySnapshot } from "@/optimization/types";
 import type { RoutingEngine, RoutingTelemetrySnapshot } from "@/routing/types";
 
 import type { RideCorridor } from "./corridor";
@@ -25,6 +26,7 @@ import type {
   RouteInsertionCandidate,
   RouteInsertionResult,
   ScoreBreakdown,
+  SolvedRoute,
   StageResult,
 } from "./types";
 
@@ -35,6 +37,8 @@ export interface RunMatchingOptions {
   routing: RoutingEngine;
   stages: MatchingStage[];
   telemetry: () => RoutingTelemetrySnapshot;
+  optimizer: OptimizerEngine;
+  optimizerTelemetry: () => OptimizerTelemetrySnapshot;
   /** Injectable clock so tests can assert on timings deterministically. */
   now?: () => number;
 }
@@ -45,7 +49,7 @@ export interface RunMatchingOptions {
  * input must produce the same output.
  */
 export async function runMatching(options: RunMatchingOptions): Promise<MatchingResult> {
-  const { scenario, request, settings, routing, stages } = options;
+  const { scenario, request, settings, routing, optimizer, stages } = options;
   const now = options.now ?? (() => performance.now());
   const runStarted = now();
 
@@ -59,6 +63,8 @@ export async function runMatching(options: RunMatchingOptions): Promise<Matching
   const sequences = new Map<string, RouteInsertionCandidate[]>();
   // Stage 1 prices the ride's existing promises here; stages 6 and 10 enforce them.
   const delayBudgets = new Map<string, StopDelayBudget[]>();
+  // Stage 8 publishes the solved route here; stages 9 through 12 read it.
+  const solutions = new Map<string, SolvedRoute>();
 
   let liveDriverIds: string[] = [...allDriverIds];
   let requestRejection: MatchReason | undefined;
@@ -83,6 +89,8 @@ export async function runMatching(options: RunMatchingOptions): Promise<Matching
       corridors,
       sequences,
       delayBudgets,
+      solutions,
+      optimizer,
     });
 
     const outcome = await stage.execute(context);
@@ -182,6 +190,7 @@ export async function runMatching(options: RunMatchingOptions): Promise<Matching
     ranked,
     summary: buildSummary(evaluations, ranked, allDriverIds.length, candidates),
     telemetry: options.telemetry(),
+    optimizerTelemetry: options.optimizerTelemetry(),
     durationMs: now() - runStarted,
   };
 }
@@ -220,6 +229,8 @@ function createContext(input: {
   corridors: Map<string, RideCorridor>;
   sequences: Map<string, RouteInsertionCandidate[]>;
   delayBudgets: Map<string, StopDelayBudget[]>;
+  solutions: Map<string, SolvedRoute>;
+  optimizer: OptimizerEngine;
 }): MatchingContext {
   const { scenario, request, settings, routing, liveDriverIds, ledger, lookups } = input;
 
@@ -242,6 +253,11 @@ function createContext(input: {
     getCorridor: (driverId: string): RideCorridor | undefined => input.corridors.get(driverId),
     getSequences: (driverId: string): RouteInsertionCandidate[] =>
       input.sequences.get(driverId) ?? [],
+    optimizer: input.optimizer,
+    getSolution: (driverId: string): SolvedRoute | undefined => input.solutions.get(driverId),
+    setSolution: (driverId: string, solution: SolvedRoute): void => {
+      input.solutions.set(driverId, solution);
+    },
     getDelayBudgets: (driverId: string): StopDelayBudget[] =>
       input.delayBudgets.get(driverId) ?? [],
     setDelayBudgets: (driverId: string, budgets: StopDelayBudget[]): void => {

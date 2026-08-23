@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_SETTINGS } from "@/domain/settings";
 import { enumerateInsertions } from "@/matching/insertion";
-import { findBestInsertion } from "@/matching/routeInsertion";
 import type { ProposedStop } from "@/matching/types";
-import { MockRoutingEngine } from "@/routing/MockRoutingEngine";
-
-import { ScriptedRoutingEngine } from "./fixtures/stubRouting";
 
 function stop(id: string, type: ProposedStop["type"], passengerId: string): ProposedStop {
   return {
@@ -87,143 +82,22 @@ describe("insertion enumeration", () => {
   });
 });
 
-describe("findBestInsertion", () => {
-  const baseInput = {
-    driverLocation: { lat: 28.63, lng: 77.21 },
-    onboardSeats: 0,
-    totalSeats: 4,
-    newPickup: NEW_PICKUP,
-    newDrop: NEW_DROP,
-    settings: DEFAULT_SETTINGS,
-  };
-
-  it("computes detour as the proportional increase over the baseline route", () => {
-    // 10 km baseline becoming 11 km is exactly 10%.
-    const routing = new ScriptedRoutingEngine((waypointCount) =>
-      waypointCount === 2
-        ? { distanceKm: 10, durationMin: 20 }
-        : { distanceKm: 11, durationMin: 22 },
-    );
-
-    return findBestInsertion({
-      ...baseInput,
-      existingStops: [stop("d0", "DROP", "P0")],
-      onboardSeats: 1,
-      routing,
-    }).then((result) => {
-      expect(result.originalDistanceKm).toBe(10);
-      expect(result.newDistanceKm).toBe(11);
-      expect(result.additionalDistanceKm).toBeCloseTo(1, 10);
-      expect(result.detourPercentage).toBeCloseTo(10, 10);
-      expect(result.feasible).toBe(true);
-    });
-  });
-
-  it("rejects a route that needs more waypoints than the provider accepts", async () => {
-    const result = await findBestInsertion({
-      ...baseInput,
-      // 25 existing stops plus two new ones is 26 intermediates, one over.
-      existingStops: Array.from({ length: 25 }, (_, index) =>
-        stop(`s${index}`, "DROP", `P${index}`),
-      ),
-      totalSeats: 40,
-      onboardSeats: 30,
-      routing: new MockRoutingEngine(),
-    });
-
-    expect(result.feasible).toBe(false);
-    expect(result.rejectionReason?.code).toBe("WAYPOINT_LIMIT_EXCEEDED");
-    expect(result.rejectionReason?.value).toBe(26);
-    expect(result.rejectionReason?.threshold).toBe(25);
-  });
-
-  it("rejects when no insertion position keeps the vehicle within capacity", async () => {
-    // A full vehicle with nobody getting out has no room anywhere in the route.
-    const result = await findBestInsertion({
-      ...baseInput,
-      existingStops: [],
-      onboardSeats: 4,
-      totalSeats: 4,
-      routing: new MockRoutingEngine(),
-    });
-
-    expect(result.feasible).toBe(false);
-    expect(result.rejectionReason?.code).toBe("SEGMENT_CAPACITY_EXCEEDED");
-    // Rejected before anything was billed.
-    expect(result.attemptStats.routed).toBe(0);
-  });
-
-  it("uses an existing rider's drop to make room instead of rejecting outright", async () => {
-    // The vehicle is full right now, so the new pickup only fits *after* the
-    // existing passenger gets out. This is the whole reason capacity is
-    // evaluated per segment rather than as a single seat count.
-    const routing = new ScriptedRoutingEngine((waypointCount) =>
-      waypointCount === 2
-        ? { distanceKm: 10, durationMin: 20 }
-        : { distanceKm: 11, durationMin: 22 },
-    );
-
-    const result = await findBestInsertion({
-      ...baseInput,
-      existingStops: [stop("d0", "DROP", "P0")],
-      onboardSeats: 4,
-      totalSeats: 4,
-      routing,
-    });
-
-    expect(result.feasible).toBe(true);
-    expect(result.pickupIndex).toBe(1);
-    // The two placements ahead of that drop were discarded for free.
-    expect(result.attemptStats.occupancyPruned).toBe(2);
-    expect(result.attemptStats.routed).toBe(1);
-  });
-
-  it("never routes more candidates than the configured cap", async () => {
-    const routing = new ScriptedRoutingEngine(() => ({ distanceKm: 5, durationMin: 10 }));
-    const settings = { ...DEFAULT_SETTINGS, maxRoutedInsertionsPerDriver: 3 };
-
-    const result = await findBestInsertion({
-      ...baseInput,
-      existingStops: existingRoute(4),
-      totalSeats: 8,
-      settings,
-      routing,
-    });
-
-    // 8 existing stops enumerate 45 candidates; only three may be billed.
-    expect(result.attemptStats.enumerated).toBe(45);
-    expect(result.attemptStats.routed).toBeLessThanOrEqual(3);
-  });
-
-  it("treats an idle driver as having no detour to make", async () => {
-    const result = await findBestInsertion({
-      ...baseInput,
-      existingStops: [],
-      routing: new MockRoutingEngine(),
-    });
-
-    expect(result.feasible).toBe(true);
-    expect(result.detourPercentage).toBe(0);
-    expect(result.originalDistanceKm).toBe(0);
-  });
-
-  it("returns the least-bad attempt so a rejection can still be drawn", async () => {
-    const routing = new ScriptedRoutingEngine((waypointCount) =>
-      waypointCount === 2
-        ? { distanceKm: 10, durationMin: 20 }
-        : { distanceKm: 30, durationMin: 60 },
-    );
-
-    const result = await findBestInsertion({
-      ...baseInput,
-      existingStops: [stop("d0", "DROP", "P0")],
-      onboardSeats: 1,
-      routing,
-    });
-
-    expect(result.feasible).toBe(false);
-    expect(result.rejectionReason?.code).toBe("ROUTE_DETOUR_TOO_HIGH");
-    expect(result.bestAttempt).toBeDefined();
-    expect(result.insertedRoute).toBeDefined();
-  });
-});
+/*
+ * `findBestInsertion` is gone: stage 8 owns all routing now, and the file that
+ * held it was deleted in Task 17. Its seven assertions did not vanish with it.
+ *
+ * Already restored, against the stages that took the behaviour over:
+ *
+ * - waypoint limit                 → stopSequenceGeneration.test.ts
+ * - segment capacity rejection     → stopSequenceGeneration.test.ts
+ * - a drop making room for a rider → stopSequenceGeneration.test.ts
+ * - the routed-candidate cap       → detourLowerBound.test.ts
+ * - an idle driver has no detour   → detourLowerBound.test.ts
+ *
+ * Still owed, both of them stage 9 material and due in Task 18:
+ *
+ * - detour reported as the proportional increase over the baseline route
+ *   (10 km becoming 11 km is exactly 10%)
+ * - a rejected insertion still carries its least-bad attempt, so the map can
+ *   draw what was tried
+ */

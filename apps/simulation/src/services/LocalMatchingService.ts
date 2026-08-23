@@ -2,6 +2,7 @@ import { runMatching } from "@/matching/engine";
 import { resolveStages } from "@/matching/pipeline";
 import { STAGE_REGISTRY } from "@/matching/stages";
 import type { MatchingRun } from "@/matching/types";
+import { createOptimizerStack, OptimizerCache } from "@/optimization";
 import { createRoutingStack, RoutingCache } from "@/routing";
 
 import type { FindMatchesInput, MatchingService } from "./MatchingService";
@@ -19,6 +20,9 @@ export class LocalMatchingService implements MatchingService {
    */
   private readonly cache = new RoutingCache({ coordinatePrecision: null });
 
+  /** Same discipline for solver answers, which are billed per shipment. */
+  private readonly optimizerCache = new OptimizerCache();
+
   async findMatches(input: FindMatchesInput): Promise<MatchingRun> {
     const { scenario, request, settings } = input;
     const startedAt = Date.now();
@@ -29,6 +33,12 @@ export class LocalMatchingService implements MatchingService {
       ...(input.createGoogleEngine ? { createGoogleEngine: input.createGoogleEngine } : {}),
     });
 
+    const optimizerStack = createOptimizerStack({
+      settings,
+      cache: this.optimizerCache,
+      ...(input.createOptimizerEngine ? { engine: input.createOptimizerEngine() } : {}),
+    });
+
     const result = await runMatching({
       scenario,
       request,
@@ -36,6 +46,8 @@ export class LocalMatchingService implements MatchingService {
       routing: stack.engine,
       stages: resolveStages(STAGE_REGISTRY, settings.stageOrder),
       telemetry: () => stack.telemetry.snapshot(),
+      optimizer: optimizerStack.engine,
+      optimizerTelemetry: () => optimizerStack.telemetry.snapshot(),
     });
 
     const telemetry = stack.telemetry.snapshot();
@@ -52,6 +64,7 @@ export class LocalMatchingService implements MatchingService {
       result,
       routingEngine: telemetry.engine,
       fallbackReason: telemetry.fallbackReason,
+      optimizerUnavailableReason: optimizerStack.telemetry.snapshot().unavailableReason,
       durationMs: result.durationMs,
     };
   }
@@ -59,6 +72,7 @@ export class LocalMatchingService implements MatchingService {
   /** Drops cached routes, e.g. after switching routing engines. */
   clearCache(): void {
     this.cache.clear();
+    this.optimizerCache.clear();
   }
 }
 

@@ -8,14 +8,14 @@ import { evaluationFor, failureCodes, runFixture, stageStatus } from "./fixtures
 /**
  * One scenario that walks the pipeline end to end.
  *
- * Stages 0 through 7 are implemented; the four after them are still no-op
+ * Stages 0 through 8 are implemented; the three after them are still no-op
  * placeholders. The assertions below pin both halves: what the implemented
  * filters decide, and the fact that every unimplemented stage passes everyone
- * through. Tasks 17-21 add each remaining stage's rejections back, one task at
+ * through. Tasks 18-21 add each remaining stage's rejections back, one task at
  * a time, and tighten this file as they go.
  */
-
 describe("Delhi NCR morning pool", () => {
+
   let result: MatchingResult;
 
   beforeAll(async () => {
@@ -68,9 +68,8 @@ describe("Delhi NCR morning pool", () => {
     // Stages leave this list as they are implemented, and pick up their own
     // assertions above. Gone so far: operationalState, h3RouteCorridor,
     // pickupRouteDistance, directionCompatibility, stopSequenceGeneration,
-    // pickupTimeWindow, detourLowerBound.
+    // pickupTimeWindow, detourLowerBound, roadRouting.
     for (const stageId of [
-      "roadRouting",
       "incrementalCost",
       "hardConstraints",
       "commit",
@@ -145,10 +144,20 @@ describe("Delhi NCR morning pool", () => {
     });
   });
 
-  it("issues no routing calls while every routing stage is a placeholder", () => {
+  it("spends the routing API on baselines only, and the solver on sequencing", () => {
+    // The division of labour stage 8 rests on. Routing answers "what does this
+    // already-decided route cost", which is a measurement with no optimisation
+    // in it and must not be billed at solver prices. OptimizeTours answers
+    // "where does the new rider go", once per surviving driver.
     expect(result.telemetry.engine).toBe("MOCK");
     expect(result.telemetry.matrixCalls).toBe(0);
-    expect(result.telemetry.routeCalls).toBe(0);
+
+    // One shared solo route for the new rider, plus one baseline per surviving
+    // driver that actually has a committed route. D001 is idle, so it has none.
+    expect(result.telemetry.routeCalls).toBe(2);
+
+    expect(result.optimizerTelemetry.calls).toBe(2);
+    expect(result.optimizerTelemetry.unavailableReason).toBeNull();
   });
 
   it("explains every rejection with a value and a threshold where one applies", () => {

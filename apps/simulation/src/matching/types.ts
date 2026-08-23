@@ -8,7 +8,8 @@ import type {
   Stop,
   Vehicle,
 } from "@/domain/entities";
-import type { RoutingEngine, RoutingTelemetrySnapshot } from "@/routing/types";
+import type { OptimizerEngine, OptimizerTelemetrySnapshot } from "@/optimization/types";
+import type { RouteLegResult, RoutingEngine, RoutingTelemetrySnapshot } from "@/routing/types";
 
 import type { RideCorridor } from "./corridor";
 import type { MatchReason, ReasonCategory, ReasonCode } from "./reasons";
@@ -144,6 +145,25 @@ export interface RouteInsertionCandidate {
   stops: ProposedStop[];
 }
 
+/**
+ * What stage 8 hands to stages 9 through 12.
+ *
+ * Carries both the solved route and the baseline it must be measured against,
+ * so stage 9 can compute every party's delta without re-deriving anything or
+ * issuing a call of its own.
+ */
+export interface SolvedRoute {
+  stops: ProposedStop[];
+  legs: RouteLegResult[];
+  arrivalByStopId: Map<string, number>;
+  totalDistanceKm: number;
+  totalDurationMin: number;
+  baselineDistanceKm: number;
+  baselineDurationMin: number;
+  baselineArrivalByStopId: Map<string, number>;
+  soloDurationMin: number;
+}
+
 export interface RouteInsertionResult {
   feasible: boolean;
 
@@ -243,6 +263,7 @@ export interface MatchingResult {
   ranked: DriverEvaluation[];
   summary: MatchingSummary;
   telemetry: RoutingTelemetrySnapshot;
+  optimizerTelemetry: OptimizerTelemetrySnapshot;
   durationMs: number;
 }
 
@@ -256,6 +277,7 @@ export interface MatchingRun {
   result: MatchingResult;
   routingEngine: "GOOGLE" | "MOCK";
   fallbackReason: string | null;
+  optimizerUnavailableReason: string | null;
   durationMs: number;
 }
 
@@ -268,6 +290,7 @@ export interface MatchingContext {
   readonly request: RideRequest;
   readonly settings: MatchingSettings;
   readonly routing: RoutingEngine;
+  readonly optimizer: OptimizerEngine;
 
   /** Driver ids still alive entering the current stage. */
   readonly liveDriverIds: readonly string[];
@@ -289,6 +312,10 @@ export interface MatchingContext {
   /** Candidate orderings published by stage 5 and narrowed by stages 6 and 7. */
   getSequences(driverId: string): RouteInsertionCandidate[];
   setSequences(driverId: string, candidates: RouteInsertionCandidate[]): void;
+
+  /** The solved route published by stage 8 and read by stages 9 through 12. */
+  getSolution(driverId: string): SolvedRoute | undefined;
+  setSolution(driverId: string, solution: SolvedRoute): void;
 
   /** Per-stop delay budgets published by stage 1 and enforced by stages 6 and 10. */
   getDelayBudgets(driverId: string): StopDelayBudget[];

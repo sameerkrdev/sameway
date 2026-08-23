@@ -3,7 +3,10 @@ import { runMatching } from "@/matching/engine";
 import { resolveStages } from "@/matching/pipeline";
 import { STAGE_REGISTRY } from "@/matching/stages";
 import type { MatchingResult } from "@/matching/types";
+import { createOptimizerStack } from "@/optimization";
 import { createRoutingStack } from "@/routing";
+
+import { StubOptimizerEngine } from "./stubOptimizer";
 
 /** Runs the real pipeline against the mock routing engine. */
 export async function runFixture(
@@ -13,6 +16,7 @@ export async function runFixture(
 ): Promise<MatchingResult> {
   const settings: MatchingSettings = { ...scenario.settings, ...settingsOverride };
   const stack = createRoutingStack({ settings });
+  const optimizerStack = createOptimizerStack({ settings, engine: new StubOptimizerEngine() });
 
   return runMatching({
     scenario,
@@ -21,6 +25,8 @@ export async function runFixture(
     routing: stack.engine,
     stages: resolveStages(STAGE_REGISTRY, settings.stageOrder),
     telemetry: () => stack.telemetry.snapshot(),
+    optimizer: optimizerStack.engine,
+    optimizerTelemetry: () => optimizerStack.telemetry.snapshot(),
   });
 }
 
