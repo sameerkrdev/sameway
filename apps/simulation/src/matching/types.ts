@@ -34,6 +34,10 @@ export interface DriverMetrics {
   roadDistanceKm?: number;
   roadEtaMin?: number;
 
+  // Operational state
+  flexibleStopCount?: number;
+  tightestDelayBudgetMin?: number;
+
   // Capacity
   totalSeats?: number;
   committedSeats?: number;

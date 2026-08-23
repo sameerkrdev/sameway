@@ -3161,7 +3161,7 @@ git commit -m "refactor(simulation): switch pipeline to the Overview's thirteen 
 
 ---
 
-## Task 10: Stage 1 — Operational state
+## Task 10: Stage 1 — Operational state — LANDED
 
 **Files:**
 - Modify: `src/matching/stages/operationalState.ts`
@@ -3172,7 +3172,7 @@ git commit -m "refactor(simulation): switch pipeline to the Overview's thirteen 
 - Consumes: `buildCorridors` (Task 3); `Passenger.maxPickupDelayMin` / `maxDropDelayMin` and `Stop.originalEtaMin` (Task 1).
 - Produces: `DriverMetrics.flexibleStopCount?: number`, `DriverMetrics.tightestDelayBudgetMin?: number`, and a stage note `budgetsByDriver: Record<string, { stopId: string; passengerId: string; budgetMin: number }[]>` that stage 6 reads.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/test/operationalState.test.ts`:
 
@@ -3257,7 +3257,7 @@ describe("operationalState", () => {
 });
 ```
 
-- [ ] **Step 2: Write the shared stage-context fixture**
+- [x] **Step 2: Write the shared stage-context fixture**
 
 Create `src/test/fixtures/stageContext.ts`. Every stage test from here on uses it, so it belongs in this task:
 
@@ -3438,12 +3438,12 @@ export function makeContext(input: MakeContextInput): MatchingContext & {
 
 Note: the fixture returns a `MatchingContext` plus a `metrics` map, so tests can read what a stage recorded. The optimizer field is added to this fixture in Task 17.
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [x] **Step 3: Run the test to verify it fails**
 
 Run: `bun run test src/test/operationalState.test.ts`
 Expected: FAIL — the no-op stage records no notes and no metrics.
 
-- [ ] **Step 4: Implement the stage**
+- [x] **Step 4: Implement the stage**
 
 Replace `src/matching/stages/operationalState.ts`:
 
@@ -3568,17 +3568,17 @@ Add the two metric fields to `DriverMetrics` in `src/matching/types.ts`:
   tightestDelayBudgetMin?: number;
 ```
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run: `bun run test src/test/operationalState.test.ts`
 Expected: PASS, all five cases.
 
-- [ ] **Step 6: Run the whole suite**
+- [x] **Step 6: Run the whole suite**
 
 Run: `bun run check-types && bun run lint && bun run test`
 Expected: all green.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/matching src/test
