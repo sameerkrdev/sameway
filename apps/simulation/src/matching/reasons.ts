@@ -202,6 +202,11 @@ export const REASONS = {
     label: "Existing passenger delayed",
     outcome: "FAIL",
   },
+  NEW_PASSENGER_RIDE_DETOUR_TOO_HIGH: {
+    category: "ROUTE",
+    label: "New rider's journey stretched too far",
+    outcome: "FAIL",
+  },
   NEW_PASSENGER_PICKUP_DELAY_TOO_HIGH: {
     category: "ROUTE",
     label: "New pickup delayed",

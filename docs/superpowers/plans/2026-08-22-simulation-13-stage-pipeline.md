@@ -6342,7 +6342,7 @@ git commit -m "feat(simulation): stage 9 per-party incremental cost"
 
 ---
 
-## Task 19: Stage 10 — Hard constraints
+## Task 19: Stage 10 — Hard constraints — LANDED
 
 **Files:**
 - Modify: `src/matching/stages/hardConstraints.ts`
@@ -6352,7 +6352,7 @@ git commit -m "feat(simulation): stage 9 per-party incremental cost"
 - Consumes: metrics recorded by stage 9 (Task 18); `context.getDelayBudgets` (Task 15); `activePassengerIds` from `@/matching/stops`.
 - Produces: nothing new — it reuses the existing `ROUTE_*` and `POOLING_*` reason codes.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/test/hardConstraints.test.ts`. Build the context with the stage chain from `incrementalCost.test.ts`, then run `hardConstraintsStage` and assert:
 
@@ -6447,7 +6447,7 @@ describe("hardConstraints", () => {
 });
 ```
 
-- [ ] **Step 2: Extract the shared stage runner**
+- [x] **Step 2: Extract the shared stage runner**
 
 Create `src/test/fixtures/runStages.ts` so the chain is written once rather than in every stage test from here on:
 
@@ -6491,12 +6491,12 @@ export async function runToIncrementalCost(input: MakeContextInput) {
 
 Add `optimizer?: OptimizerEngine` to `MakeContextInput` in `stageContext.ts` if Task 17 did not already.
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [x] **Step 3: Run the test to verify it fails**
 
 Run: `bun run test src/test/hardConstraints.test.ts`
 Expected: FAIL — no-op stage passes everything.
 
-- [ ] **Step 4: Implement the stage**
+- [x] **Step 4: Implement the stage**
 
 Replace `src/matching/stages/hardConstraints.ts`:
 
@@ -6753,12 +6753,12 @@ Add one reason code to `src/matching/reasons.ts`:
   },
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `bun run test src/test/hardConstraints.test.ts`
 Expected: PASS, all seven cases.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/matching src/test

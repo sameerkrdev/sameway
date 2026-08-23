@@ -8,14 +8,13 @@ import { evaluationFor, failureCodes, runFixture, stageStatus } from "./fixtures
 /**
  * One scenario that walks the pipeline end to end.
  *
- * Stages 0 through 8 are implemented; the three after them are still no-op
+ * Stages 0 through 10 are implemented; only scoring and commit are still no-op
  * placeholders. The assertions below pin both halves: what the implemented
  * filters decide, and the fact that every unimplemented stage passes everyone
- * through. Tasks 18-21 add each remaining stage's rejections back, one task at
+ * through. Tasks 20-21 add each remaining stage's rejections back, one task at
  * a time, and tighten this file as they go.
  */
 describe("Delhi NCR morning pool", () => {
-
   let result: MatchingResult;
 
   beforeAll(async () => {
@@ -28,9 +27,10 @@ describe("Delhi NCR morning pool", () => {
     // out, so its single-point corridor never reaches the pickup. D005 is idle
     // 2.5 km out: near enough for the ring search, too far once stage 3
     // measures it. D006 is on the westbound ride and the request heads east.
-    // The rest survive a pipeline whose remaining filters are not implemented
+    // D007 is rejected at stage 10; see its own test below. D001 is the only
+    // driver left, and the remaining filters are not implemented
     // yet.
-    expect(result.ranked.map((entry) => entry.driverId)).toEqual(["D001", "D007"]);
+    expect(result.ranked.map((entry) => entry.driverId)).toEqual(["D001"]);
     const winner = evaluationFor(result, "D001");
     expect(winner.finalStatus).toBe("PASSED");
     expect(winner.rank).toBe(1);
@@ -68,10 +68,9 @@ describe("Delhi NCR morning pool", () => {
     // Stages leave this list as they are implemented, and pick up their own
     // assertions above. Gone so far: operationalState, h3RouteCorridor,
     // pickupRouteDistance, directionCompatibility, stopSequenceGeneration,
-    // pickupTimeWindow, detourLowerBound, roadRouting.
+    // pickupTimeWindow, detourLowerBound, roadRouting, incrementalCost,
+    // hardConstraints.
     for (const stageId of [
-      "incrementalCost",
-      "hardConstraints",
       "commit",
     ]) {
       expect(stageStatus(result, "D001", stageId)).toBe("PASSED");
@@ -97,14 +96,27 @@ describe("Delhi NCR morning pool", () => {
       { id: "detourLowerBound", out: 2 },
       { id: "roadRouting", out: 2 },
       { id: "incrementalCost", out: 2 },
-      { id: "hardConstraints", out: 2 },
-      { id: "scoring", out: 2 },
-      { id: "commit", out: 2 },
+      { id: "hardConstraints", out: 1 },
+      { id: "scoring", out: 1 },
+      { id: "commit", out: 1 },
     ]);
     // Candidates now come from the corridor stage rather than H3 ring growth.
     expect(result.summary.candidates).toBe(4);
-    expect(result.summary.passed).toBe(2);
-    expect(result.summary.rejected).toBe(6);
+    expect(result.summary.passed).toBe(1);
+    expect(result.summary.rejected).toBe(7);
+  });
+
+  it("rejects the pooled ride on detour, because the spine is locked to the head", () => {
+    // D007 is the case the current spine policy makes unreachable. Its rider is
+    // going 14 km east and the new rider's pickup is right at the start of that
+    // run — textbook pooling. But lockedVisits pins both committed stops to the
+    // head of the route, so the solver can only append the new rider after the
+    // 14 km drop, and the detour comes out near 100%. See ShipmentModelBuilder.
+    expect(failureCodes(result, "D007")).toEqual(["ROUTE_DETOUR_TOO_HIGH"]);
+
+    const evaluation = evaluationFor(result, "D007");
+    expect(evaluation.failedAtStageId).toBe("hardConstraints");
+    expect(evaluation.metrics.detourPercent).toBeGreaterThan(50);
   });
 
   it("rejects a ride heading the other way", () => {
@@ -141,6 +153,7 @@ describe("Delhi NCR morning pool", () => {
       CORRIDOR_NO_MATCH: 1,
       PICKUP_TOO_FAR_FROM_ROUTE: 1,
       BEARING_INCOMPATIBLE: 1,
+      ROUTE_DETOUR_TOO_HIGH: 1,
     });
   });
 
