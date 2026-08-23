@@ -10,6 +10,17 @@ import type {
   StageOutcome,
 } from "../types";
 
+/**
+ * Normalised value for a component whose real threshold no longer exists.
+ *
+ * Stages 8 and 9 (Tasks 17-18) start populating `roadEtaMin` and
+ * `roadDistanceKm` before Task 20 rewrites this stage. Between those points
+ * there is no honest threshold to normalise them against, so both components
+ * contribute a fixed zero. A wrong-but-plausible threshold would keep the
+ * final score looking reasonable while it silently stopped discriminating.
+ */
+const UNSCORED_PLACEHOLDER = 0;
+
 /** Idle time at which the experimental fairness component saturates at 100. */
 const FAIRNESS_REFERENCE_IDLE_MINUTES = 60;
 
@@ -44,13 +55,13 @@ export const scoringStage: MatchingStage = {
           key: "eta",
           label: "Pickup ETA",
           rawValue: metrics.roadEtaMin,
-          // Task 20 rewrites scoring against the optimizer's real leg data.
-          // Until then the closest surviving threshold stands in for the
-          // deleted `maxPickupEtaMin`.
-          normalized: normalizeLowerIsBetter(
-            metrics.roadEtaMin,
-            settings.maxNewPassengerPickupDelayMin,
-          ),
+          // Task 20 replaces this component. Its threshold (`maxPickupEtaMin`)
+          // was deleted with the ETA stage, and no surviving setting means the
+          // same thing: a delay budget is not an ETA cap. Pinned to the
+          // placeholder rather than normalised against a plausible-but-wrong
+          // threshold, so that when Task 17 starts populating `roadEtaMin` this
+          // component stays visibly inert instead of quietly going constant.
+          normalized: UNSCORED_PLACEHOLDER,
           weight: weights.eta,
           contribution: 0,
         },
@@ -58,10 +69,10 @@ export const scoringStage: MatchingStage = {
           key: "distance",
           label: "Pickup distance",
           rawValue: metrics.roadDistanceKm,
-          normalized: normalizeLowerIsBetter(
-            metrics.roadDistanceKm,
-            settings.maxPickupToRouteDistanceKm,
-          ),
+          // Task 20 replaces this component. `maxPickupToRouteDistanceKm` is a
+          // perpendicular corridor offset, not a road distance; scoring road
+          // distance against it would clamp every driver past 1.5 km to zero.
+          normalized: UNSCORED_PLACEHOLDER,
           weight: weights.distance,
           contribution: 0,
         },

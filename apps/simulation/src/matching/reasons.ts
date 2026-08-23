@@ -234,6 +234,11 @@ export const REASONS = {
   },
 
   // System -------------------------------------------------------------------
+  DRIVER_NOT_FOUND: {
+    category: "SYSTEM",
+    label: "Driver record missing",
+    outcome: "FAIL",
+  },
   ROUTING_BUDGET_EXCEEDED: {
     category: "SYSTEM",
     label: "Routing budget exhausted",

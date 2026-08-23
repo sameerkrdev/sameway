@@ -83,8 +83,10 @@ export async function runMatching(options: RunMatchingOptions): Promise<Matching
       outcome.verdicts.map((verdict) => [verdict.driverId, verdict] as const),
     );
 
-    // Stage 1 discovers the candidate set rather than filtering it, so drivers
-    // it did not surface are failed here rather than passing by default.
+    // A stage may discover a candidate set rather than filter one, in which
+    // case drivers it did not surface are failed here rather than passing by
+    // default. DORMANT: no stage emits `candidateDriverIds` while stage 2 is a
+    // placeholder. Task 11 re-arms this by returning the corridor match set.
     const candidateSet = outcome.candidateDriverIds
       ? new Set(outcome.candidateDriverIds)
       : undefined;
@@ -115,6 +117,8 @@ export async function runMatching(options: RunMatchingOptions): Promise<Matching
           ...(verdict.metrics ? { metrics: verdict.metrics } : {}),
         };
       } else if (candidateSet && !candidateSet.has(driverId)) {
+        // DORMANT with the branch above. Task 11 decides whether an
+        // out-of-corridor driver keeps this code or gets `CORRIDOR_NO_MATCH`.
         result = {
           driverId,
           status: "FAILED",
@@ -252,9 +256,13 @@ function skippedStage(
 }
 
 /**
- * The candidate count is the output of H3 generation, not the driver pool —
- * "24 candidates, 5 passed" only means something if candidates excludes
- * drivers that were never in the search area.
+ * The candidate count is the output of the corridor stage.
+ *
+ * Note this is no longer "everyone in the search area": stage 2 runs after
+ * stage 0, so drivers that failed basic eligibility were never offered to it.
+ * `candidates` therefore means "eligible drivers whose corridor matched", and
+ * `totalDrivers - candidates` mixes ineligible supply with out-of-corridor
+ * supply. The per-stage funnel is the place to tell those apart.
  */
 function countCandidates(stageResults: readonly StageResult[]): number {
   const generation = stageResults.find((stage) => stage.stageId === "h3RouteCorridor");

@@ -56,7 +56,10 @@ function firstEligibilityFailure(
   const driver = context.getDriver(driverId);
 
   if (!driver) {
-    return reason("VEHICLE_NOT_FOUND", "Driver record missing");
+    // A data-integrity fault, not a vehicle-lookup fault. The two must stay
+    // separable: the dashboard groups by code, and "your fleet data is broken"
+    // and "this driver has the wrong vehicle" are different problems.
+    return reason("DRIVER_NOT_FOUND", "Driver record missing");
   }
 
   if (driver.status === "OFFLINE") {

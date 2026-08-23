@@ -281,11 +281,12 @@ export interface StageOutcome {
    */
   verdicts: DriverVerdict[];
   notes?: Record<string, unknown>;
-  /** Stage 0 only: aborts the whole run. */
+  /** `requestValidation` only: aborts the whole run. */
   requestRejection?: MatchReason;
   /**
-   * Stage 1 only: the discovered candidate set. Live drivers absent from this
-   * list are failed with the stage's rejection reason.
+   * A discovery stage only (stage 2, `h3RouteCorridor`): the candidate set.
+   * Live drivers absent from this list are failed with the stage's rejection
+   * reason. Unused while stage 2 is a placeholder; Task 11 populates it.
    */
   candidateDriverIds?: string[];
 }

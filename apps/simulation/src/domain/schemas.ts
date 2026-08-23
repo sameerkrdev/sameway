@@ -3,6 +3,7 @@ import { z } from "zod";
 import { haversineKm } from "@/lib/geo";
 
 import { SCENARIO_SCHEMA_VERSION, type Scenario } from "./entities";
+import { DEFAULT_SETTINGS, DEFAULT_STAGE_ORDER } from "./settings";
 
 const latLngSchema = z.object({
   lat: z.number().min(-90).max(90),
@@ -193,6 +194,39 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function numberOr(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+/**
+ * Brings a v1 settings block up to the current shape.
+ *
+ * Two independent things break otherwise, and each one alone is enough to make
+ * a genuine v1 document unimportable.
+ *
+ * A v1 block predates every settings field added since it was written, and
+ * `matchingSettingsSchema` requires all of them — so missing keys are filled
+ * from `DEFAULT_SETTINGS`. This has to keep working as the schema moves:
+ * tasks are still adding and removing settings fields.
+ *
+ * And its `stageOrder` holds the nine pre-Overview stage ids, none of which
+ * `stageIdSchema` still accepts. That array is replaced wholesale rather than
+ * mapped: there is no correspondence between the old nine stages and the
+ * current fourteen, and a v1 stage order carries no information worth
+ * preserving. Obsolete keys left in the block are dropped by zod, which strips
+ * unknown properties.
+ */
+function migrateSettings(legacy: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...DEFAULT_SETTINGS,
+    ...legacy,
+    stageOrder: [...DEFAULT_STAGE_ORDER],
+    weights: isRecord(legacy.weights)
+      ? { ...DEFAULT_SETTINGS.weights, ...legacy.weights }
+      : { ...DEFAULT_SETTINGS.weights },
+  };
+}
+
 /**
  * Upgrades a v1 scenario in place before validation.
  *
@@ -218,11 +252,18 @@ function migrateToV2(input: unknown): unknown {
   }
 
   const clone = structuredClone(document);
-  const settings = isRecord(clone.settings) ? (clone.settings as Record<string, number>) : {};
-  const pickupBudget = settings.maxNewPassengerPickupDelayMin ?? 6;
-  const dropBudget = settings.maxExistingPassengerDelayMin ?? 8;
+  const legacySettings = isRecord(clone.settings) ? clone.settings : {};
+  const pickupBudget = numberOr(
+    legacySettings.maxNewPassengerPickupDelayMin,
+    DEFAULT_SETTINGS.maxNewPassengerPickupDelayMin,
+  );
+  const dropBudget = numberOr(
+    legacySettings.maxExistingPassengerDelayMin,
+    DEFAULT_SETTINGS.maxExistingPassengerDelayMin,
+  );
 
   clone.schemaVersion = 2;
+  clone.settings = migrateSettings(legacySettings);
 
   if (Array.isArray(clone.passengers)) {
     for (const passenger of clone.passengers as V1Passenger[]) {

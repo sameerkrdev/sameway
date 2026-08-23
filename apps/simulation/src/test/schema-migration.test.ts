@@ -3,7 +3,51 @@ import { describe, expect, it } from "vitest";
 import { parseScenario } from "@/domain/schemas";
 import { DEFAULT_SETTINGS } from "@/domain/settings";
 
+/**
+ * A real v1 settings block, frozen as a literal.
+ *
+ * This deliberately does NOT spread `DEFAULT_SETTINGS`. The fixture used to,
+ * and that made it useless: the spread tracked whatever the current schema
+ * happened to be, so the "v1" document was really a v2 document wearing a
+ * `schemaVersion: 1` label and could never detect a migration break. Two such
+ * breaks had already accumulated undetected by Task 9.
+ *
+ * These are the exact fields and the exact nine stage ids a v1 export carried.
+ * Leave them frozen. When a task adds or removes a settings field, this object
+ * must stay behind — that gap is the whole point of the fixture.
+ */
+const V1_SETTINGS = Object.freeze({
+  h3Resolution: 9,
+  minimumUsableCandidates: 10,
+  maxH3Ring: 3,
+  maxPickupEtaMin: 6,
+  maxPickupRoadDistanceKm: 8,
+  maxDetourPercent: 15,
+  maxAdditionalDistanceKm: 5,
+  maxAdditionalDurationMin: 12,
+  maxExistingPassengerDelayMin: 8,
+  maxNewPassengerPickupDelayMin: 6,
+  maxPooledPassengers: 4,
+  maxRoutedInsertionsPerDriver: 6,
+  maxRoutingCallsPerRun: 150,
+  cacheCoordinatePrecision: null,
+  routingMode: "AUTO",
+  stageOrder: [
+    "requestValidation",
+    "h3CandidateGeneration",
+    "driverStatusFilter",
+    "vehicleFilter",
+    "capacityPreFilter",
+    "pickupEtaFilter",
+    "routeFeasibility",
+    "poolingRules",
+    "scoring",
+  ],
+  weights: { eta: 30, distance: 20, detour: 30, routeQuality: 20, fairness: 0 },
+});
+
 function v1Scenario() {
+
   return {
     schemaVersion: 1,
     id: "sc_1",
@@ -66,7 +110,7 @@ function v1Scenario() {
       },
     ],
     requests: [],
-    settings: { ...DEFAULT_SETTINGS },
+    settings: structuredClone(V1_SETTINGS),
   };
 }
 
