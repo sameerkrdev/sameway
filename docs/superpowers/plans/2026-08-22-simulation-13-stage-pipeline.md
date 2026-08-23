@@ -3955,7 +3955,7 @@ git commit -m "feat(simulation): stage 2 matches pickups against remaining-route
 
 ---
 
-## Task 12: Stage 3 — Pickup to route distance
+## Task 12: Stage 3 — Pickup to route distance — LANDED
 
 **Files:**
 - Modify: `src/matching/stages/pickupRouteDistance.ts`
@@ -3966,7 +3966,7 @@ git commit -m "feat(simulation): stage 2 matches pickups against remaining-route
 - Consumes: `context.getCorridor(driverId)` (Task 11); `pointToPolylineKm` (Task 2); `settings.maxPickupToRouteDistanceKm`.
 - Produces: `DriverMetrics.pickupToRouteKm?: number`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/test/pickupRouteDistance.test.ts`:
 
@@ -4051,12 +4051,12 @@ describe("pickupRouteDistance", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `bun run test src/test/pickupRouteDistance.test.ts`
 Expected: FAIL — the no-op stage passes everything and records nothing.
 
-- [ ] **Step 3: Implement the stage**
+- [x] **Step 3: Implement the stage**
 
 Replace `src/matching/stages/pickupRouteDistance.ts`:
 
@@ -4139,12 +4139,12 @@ Add to `DriverMetrics` in `src/matching/types.ts`, under the spatial block:
   pickupToRouteKm?: number;
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `bun run test src/test/pickupRouteDistance.test.ts`
 Expected: PASS, all five cases.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/matching src/test/pickupRouteDistance.test.ts

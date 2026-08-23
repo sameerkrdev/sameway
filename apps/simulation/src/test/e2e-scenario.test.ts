@@ -8,10 +8,10 @@ import { evaluationFor, failureCodes, runFixture, stageStatus } from "./fixtures
 /**
  * One scenario that walks the pipeline end to end.
  *
- * Stages 0, 1 and 2 are implemented; the nine after them are still no-op
+ * Stages 0 through 3 are implemented; the eight after them are still no-op
  * placeholders. The assertions below pin both halves: what the implemented
  * filters decide, and the fact that every unimplemented stage passes everyone
- * through. Tasks 12-21 add each remaining stage's rejections back, one task at
+ * through. Tasks 13-21 add each remaining stage's rejections back, one task at
  * a time, and tighten this file as they go.
  */
 describe("Delhi NCR morning pool", () => {
@@ -22,16 +22,13 @@ describe("Delhi NCR morning pool", () => {
     result = await runFixture(scenario, delhiRequest(scenario));
   });
 
-  it("ranks every driver that clears eligibility and the corridor", () => {
+  it("ranks every driver that clears eligibility and corridor proximity", () => {
     // D002, D003 and D004 fail stage 0. D008 clears stage 0 but is idle 10 km
-    // out, so its single-point corridor never reaches the pickup. The rest
-    // survive a pipeline whose remaining filters are not implemented yet.
-    expect(result.ranked.map((entry) => entry.driverId)).toEqual([
-      "D001",
-      "D005",
-      "D006",
-      "D007",
-    ]);
+    // out, so its single-point corridor never reaches the pickup. D005 is idle
+    // 2.5 km out: near enough for the ring search, too far once stage 3
+    // measures it. The rest survive a pipeline whose remaining filters are not
+    // implemented yet.
+    expect(result.ranked.map((entry) => entry.driverId)).toEqual(["D001", "D006", "D007"]);
 
     const winner = evaluationFor(result, "D001");
     expect(winner.finalStatus).toBe("PASSED");
@@ -67,10 +64,10 @@ describe("Delhi NCR morning pool", () => {
 
   it("passes every eligible driver through the unimplemented stages", () => {
     // Placeholder stages must be transparent, not silently rejecting.
-    // `operationalState` and `h3RouteCorridor` have left this list — they are
-    // implemented and now carry their own assertions above.
+    // Stages leave this list as they are implemented, and pick up their own
+    // assertions above. Gone so far: operationalState, h3RouteCorridor,
+    // pickupRouteDistance.
     for (const stageId of [
-      "pickupRouteDistance",
       "directionCompatibility",
       "stopSequenceGeneration",
       "pickupTimeWindow",
@@ -97,22 +94,22 @@ describe("Delhi NCR morning pool", () => {
       { id: "basicEligibility", out: 5 },
       { id: "operationalState", out: 5 },
       { id: "h3RouteCorridor", out: 4 },
-      { id: "pickupRouteDistance", out: 4 },
-      { id: "directionCompatibility", out: 4 },
-      { id: "stopSequenceGeneration", out: 4 },
-      { id: "pickupTimeWindow", out: 4 },
-      { id: "detourLowerBound", out: 4 },
-      { id: "roadRouting", out: 4 },
-      { id: "incrementalCost", out: 4 },
-      { id: "hardConstraints", out: 4 },
-      { id: "scoring", out: 4 },
-      { id: "commit", out: 4 },
+      { id: "pickupRouteDistance", out: 3 },
+      { id: "directionCompatibility", out: 3 },
+      { id: "stopSequenceGeneration", out: 3 },
+      { id: "pickupTimeWindow", out: 3 },
+      { id: "detourLowerBound", out: 3 },
+      { id: "roadRouting", out: 3 },
+      { id: "incrementalCost", out: 3 },
+      { id: "hardConstraints", out: 3 },
+      { id: "scoring", out: 3 },
+      { id: "commit", out: 3 },
     ]);
 
     // Candidates now come from the corridor stage rather than H3 ring growth.
     expect(result.summary.candidates).toBe(4);
-    expect(result.summary.passed).toBe(4);
-    expect(result.summary.rejected).toBe(4);
+    expect(result.summary.passed).toBe(3);
+    expect(result.summary.rejected).toBe(5);
   });
 
   it("rejects a driver whose corridor never reaches the pickup", () => {
@@ -120,6 +117,16 @@ describe("Delhi NCR morning pool", () => {
     // remaining route, not the driver's raw proximity.
     expect(failureCodes(result, "D008")).toEqual(["CORRIDOR_NO_MATCH"]);
     expect(evaluationFor(result, "D008").failedAtStageId).toBe("h3RouteCorridor");
+  });
+
+  it("rejects a driver the corridor reached but the geometry does not", () => {
+    // Stage 2's cells are coarse and padded; stage 3 is the exact measurement
+    // that overrules them.
+    expect(failureCodes(result, "D005")).toEqual(["PICKUP_TOO_FAR_FROM_ROUTE"]);
+
+    const evaluation = evaluationFor(result, "D005");
+    expect(evaluation.failedAtStageId).toBe("pickupRouteDistance");
+    expect(evaluation.metrics.pickupToRouteKm).toBeGreaterThan(1.5);
   });
 
   it("aggregates rejections by reason code for the dashboard", () => {
@@ -132,6 +139,7 @@ describe("Delhi NCR morning pool", () => {
       VEHICLE_TYPE_MISMATCH: 1,
       INSUFFICIENT_CAPACITY: 1,
       CORRIDOR_NO_MATCH: 1,
+      PICKUP_TOO_FAR_FROM_ROUTE: 1,
     });
   });
 

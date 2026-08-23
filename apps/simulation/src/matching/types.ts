@@ -30,6 +30,7 @@ export interface DriverMetrics {
   h3GridDistance?: number;
   discoveredRing?: number;
   straightLineKm?: number;
+  pickupToRouteKm?: number;
 
   // Pickup proximity (road)
   roadDistanceKm?: number;
