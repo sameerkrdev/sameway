@@ -50,6 +50,27 @@ export function shipmentIdFor(passengerId: string): string {
  * relative to each other". Both are needed: without the lock, the solver would
  * happily reorder two passengers who are both still within tolerance, breaking
  * promises we already made about who gets collected first.
+ *
+ * UNRESOLVED — `lockedVisits` is stronger than that description.
+ *
+ * The proxy maps it to `RELAX_ALL_AFTER_THRESHOLD` at
+ * `thresholdVisitCount = lockedVisits.length`, which pins the committed stops
+ * to the *head* of the route, not merely to their order among themselves. The
+ * new rider can therefore only ever be appended after every committed stop.
+ *
+ * That contradicts the Overview's flexible-commitment policy, which allows
+ * inserting ahead of a committed pickup whenever that passenger's own
+ * `maxPickupDelayMin` absorbs the delay — and it is the reason stages 5 and 6
+ * enumerate and filter orderings at all. It also has two live consequences:
+ * a rider can never be collected on the way to an existing rider's drop, which
+ * is the most common pooling case; and committed arrivals never move, so
+ * existing-passenger delay is structurally zero and the 30% existing-passenger
+ * term in stage 11's fairness score is always zero with it.
+ *
+ * Relaxing it to a genuine relative-order constraint is a product decision
+ * about how much freedom the solver gets over promises already made, so it is
+ * left as specified rather than changed here. `incrementalCost.test.ts` pins
+ * the current behaviour so the consequence stays visible.
  */
 export function buildOptimizeToursRequest(
   input: BuildShipmentModelInput,

@@ -138,3 +138,21 @@ describe("roadRouting", () => {
     expect(outcome.verdicts[0]!.reasons[0]!.code).toBe("OPTIMIZER_MANDATORY_SHIPMENT_SKIPPED");
   });
 });
+
+describe("roadRouting stop identity", () => {
+  it("keys committed stops by their scenario ids, not the solver's shipment ids", async () => {
+    // The baseline arrivals are keyed by committed stop id. If the solved
+    // stops kept the solver's own ids the two maps would never intersect, and
+    // every existing-passenger delay would silently measure zero.
+    const { context } = await run({ ...pooled, optimizer: new StubOptimizerEngine() });
+    const solution = context.getSolution("d1")!;
+
+    const committedIds = solution.stops.filter((stop) => !stop.isNew).map((stop) => stop.id);
+    expect(committedIds.sort()).toEqual(["s1", "s2"]);
+
+    for (const id of committedIds) {
+      expect(solution.arrivalByStopId.has(id)).toBe(true);
+      expect(solution.baselineArrivalByStopId.has(id)).toBe(true);
+    }
+  });
+});

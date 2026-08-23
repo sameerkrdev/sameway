@@ -94,10 +94,15 @@ describe("insertion enumeration", () => {
  * - the routed-candidate cap       → detourLowerBound.test.ts
  * - an idle driver has no detour   → detourLowerBound.test.ts
  *
- * Still owed, both of them stage 9 material and due in Task 18:
+ * - detour as a proportional increase   → detour.test.ts for the arithmetic,
+ *                                         incrementalCost.test.ts for the
+ *                                         stage applying it
  *
- * - detour reported as the proportional increase over the baseline route
- *   (10 km becoming 11 km is exactly 10%)
+ * Still owed:
+ *
  * - a rejected insertion still carries its least-bad attempt, so the map can
- *   draw what was tried
+ *   draw what was tried. Stage 9 only ever builds a RouteInsertionResult for a
+ *   driver that got a solution, so nothing populates `bestAttempt` any more.
+ *   Rejections now come from stages that never build one at all, which makes
+ *   this a question about what the map should draw for them — Task 22.
  */

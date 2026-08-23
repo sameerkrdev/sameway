@@ -6039,7 +6039,7 @@ git commit -m "feat(simulation): stage 8 routes via Google OptimizeTours"
 
 ---
 
-## Task 18: Stage 9 — Incremental cost
+## Task 18: Stage 9 — Incremental cost — LANDED
 
 **Files:**
 - Modify: `src/matching/stages/incrementalCost.ts`
@@ -6051,7 +6051,7 @@ git commit -m "feat(simulation): stage 8 routes via Google OptimizeTours"
 - Consumes: `context.getSolution` (Task 17); `computeExistingPassengerDelays`, `computeExistingPickupDelays` from `@/matching/delays`.
 - Produces: on `DriverMetrics` — `originalDistanceKm`, `newDistanceKm`, `additionalDistanceKm`, `detourPercent`, `originalDurationMin`, `newDurationMin`, `additionalDurationMin`, `newPassengerPickupEtaMin`, `newPassengerPickupDelayMin`, `newPassengerRideDetourMin`, `maximumExistingPassengerDelayMin` (all already declared). Also `context.recordInsertion(driverId, RouteInsertionResult)` so the map and detail sheet keep working unchanged.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/test/incrementalCost.test.ts`:
 
@@ -6157,12 +6157,12 @@ describe("incrementalCost", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `bun run test src/test/incrementalCost.test.ts`
 Expected: FAIL — no-op stage records nothing.
 
-- [ ] **Step 3: Implement the stage**
+- [x] **Step 3: Implement the stage**
 
 Replace `src/matching/stages/incrementalCost.ts`:
 
@@ -6324,16 +6324,16 @@ function round(value: number, digits: number): number {
 }
 ```
 
-- [ ] **Step 4: Repoint the arithmetic tests**
+- [x] **Step 4: Repoint the arithmetic tests**
 
 `src/test/detour.test.ts` and `src/test/delays.test.ts` asserted on `findBestInsertion`. Rewrite `detour.test.ts` to run the stage chain from `incrementalCost.test.ts` and assert the same arithmetic properties against `context.getMetrics(...)`. `delays.test.ts` tests `computeExistingPassengerDelays` directly and needs no change beyond adding the new `Passenger` fields to any literal it builds.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `bun run check-types && bun run test`
 Expected: green, including the rewritten `detour.test.ts` and the `.skip`s from Task 17 now un-skipped.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/matching src/test

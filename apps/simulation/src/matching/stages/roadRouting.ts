@@ -172,9 +172,22 @@ export const roadRoutingStage: MatchingStage = {
         continue;
       }
 
+      // The solver answers in shipment ids (`ship_pA:PICKUP`); the baseline
+      // and the scenario speak in committed stop ids (`s1`). Re-key the
+      // committed stops back to their originals here so both arrival maps
+      // share one key space. Without this every downstream lookup of a
+      // committed stop's baseline misses, and the existing-passenger delay
+      // that stage 10 protects silently measures zero.
+      const committedIdByPassengerStop = new Map(
+        corridor.remainingStops.map((stop) => [`${stop.passengerId}:${stop.type}`, stop.id]),
+      );
+
       const stops: ProposedStop[] = toProposedStopSequence(solved, request.passengerId).map(
         (stop) => ({
           ...stop,
+          id: stop.isNew
+            ? stop.id
+            : (committedIdByPassengerStop.get(`${stop.passengerId}:${stop.type}`) ?? stop.id),
           seats: passengersById.get(stop.passengerId)?.seatsRequired ?? 0,
         }),
       );
