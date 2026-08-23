@@ -8,6 +8,7 @@ import type {
   Vehicle,
 } from "@/domain/entities";
 import { DEFAULT_SETTINGS } from "@/domain/settings";
+import type { RideCorridor } from "@/matching/corridor";
 import type {
   DriverMetrics,
   MatchingContext,
@@ -146,6 +147,7 @@ export function makeContext(input: MakeContextInput): MatchingContext & {
   };
 
   const metrics = new Map<string, DriverMetrics>();
+  const corridors = new Map<string, RideCorridor>();
   const insertions = new Map<string, RouteInsertionResult>();
   const scores = new Map<string, ScoreBreakdown>();
 
@@ -163,6 +165,10 @@ export function makeContext(input: MakeContextInput): MatchingContext & {
         ? { stops, passengerIds: passengers.map((p) => p.id) }
         : undefined,
     getMetrics: (id) => metrics.get(id) ?? {},
+    getCorridor: (id) => corridors.get(id),
+    setCorridor: (id, corridor) => {
+      corridors.set(id, corridor);
+    },
     recordMetrics: (id, patch) => {
       metrics.set(id, { ...(metrics.get(id) ?? {}), ...patch });
     },

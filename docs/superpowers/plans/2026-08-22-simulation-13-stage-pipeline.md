@@ -3587,7 +3587,7 @@ git commit -m "feat(simulation): stage 1 operational-state delay budgets"
 
 ---
 
-## Task 11: Stage 2 — H3 route corridor
+## Task 11: Stage 2 — H3 route corridor — LANDED
 
 **Files:**
 - Modify: `src/matching/stages/h3RouteCorridor.ts`
@@ -3599,7 +3599,7 @@ git commit -m "feat(simulation): stage 1 operational-state delay budgets"
 - Consumes: `buildCorridors`, `indexCorridorsByCell`, `RideCorridor` (Task 3); `getCellsByRing`, `getH3CellFor` from `@/lib/h3`.
 - Produces: `MatchingContext.getCorridor(driverId: string): RideCorridor | undefined` — every later stage reads the remaining-route polyline from here rather than rebuilding it. Stage note shape: `{ pickupCell, h3Resolution, maxH3Ring, minimumUsableCandidates, stoppedAtRing, searchExhausted, rings: RingNote[] }` (unchanged from the old stage, so `StageDetails.tsx` keeps working).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/test/h3RouteCorridor.test.ts`:
 
@@ -3700,7 +3700,7 @@ describe("h3RouteCorridor", () => {
 });
 ```
 
-- [ ] **Step 2: Add `getCorridor` to the context**
+- [x] **Step 2: Add `getCorridor` to the context**
 
 In `src/matching/types.ts`, import `RideCorridor` and add to `MatchingContext`:
 
@@ -3735,7 +3735,7 @@ wired in `createContext` as `(driverId, corridor) => input.corridors.set(driverI
 
 Also update the engine's `candidateSet` fallback reason: `H3_OUTSIDE_SEARCH` stays the code for a driver the ring search never reached, and is still correct.
 
-- [ ] **Step 3: Implement the stage**
+- [x] **Step 3: Implement the stage**
 
 Replace `src/matching/stages/h3RouteCorridor.ts`:
 
@@ -3917,7 +3917,7 @@ function isUsableCandidate(driver: Driver, context: MatchingContext): boolean {
 }
 ```
 
-- [ ] **Step 4: Extend the test fixture**
+- [x] **Step 4: Extend the test fixture**
 
 In `src/test/fixtures/stageContext.ts`, add a corridor map so `getCorridor` / `setCorridor` work:
 
@@ -3936,17 +3936,17 @@ and to the returned object:
 
 Import `RideCorridor` from `@/matching/corridor`.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `bun run test src/test/h3RouteCorridor.test.ts`
 Expected: PASS, all six cases. The behind-the-vehicle rejection is the load-bearing one — if it passes when it should fail, `toProposedStops` is not dropping the onboard passenger's pickup, which means the fixture's passenger state is not `IN_RIDE`.
 
-- [ ] **Step 6: Run the whole suite**
+- [x] **Step 6: Run the whole suite**
 
 Run: `bun run check-types && bun run lint && bun run test`
 Expected: all green. `src/test/h3.test.ts` may assert on the old location-cell indexing — update it to test `cellsForPath` and ring attribution instead, keeping its dedup assertions.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/matching src/test

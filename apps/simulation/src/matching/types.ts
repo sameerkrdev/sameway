@@ -10,6 +10,7 @@ import type {
 } from "@/domain/entities";
 import type { RoutingEngine, RoutingTelemetrySnapshot } from "@/routing/types";
 
+import type { RideCorridor } from "./corridor";
 import type { MatchReason, ReasonCategory, ReasonCode } from "./reasons";
 
 export type EvaluationStatus = "PASSED" | "FAILED" | "NOT_EVALUATED";
@@ -259,6 +260,15 @@ export interface MatchingContext {
   getVehicleForDriver(driverId: string): Vehicle | undefined;
   getRideForDriver(driverId: string): { stops: Stop[]; passengerIds: string[] } | undefined;
   getMetrics(driverId: string): DriverMetrics;
+
+  /**
+   * The driver's remaining-route corridor, built once at stage 2 and read by
+   * stages 3, 4, 5 and 7. Undefined before stage 2 has run.
+   */
+  getCorridor(driverId: string): RideCorridor | undefined;
+
+  /** Stage 2 only. Publishes the corridors every later stage reads. */
+  setCorridor(driverId: string, corridor: RideCorridor): void;
 
   /** Merges into the driver's accumulated metrics. */
   recordMetrics(driverId: string, metrics: DriverMetrics): void;

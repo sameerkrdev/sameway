@@ -9,6 +9,7 @@ import type {
 } from "@/domain/entities";
 import type { RoutingEngine, RoutingTelemetrySnapshot } from "@/routing/types";
 
+import type { RideCorridor } from "./corridor";
 import { EvaluationLedger } from "./evaluation";
 import { REASONS, reason, type MatchReason, type ReasonCode } from "./reasons";
 import type {
@@ -49,6 +50,9 @@ export async function runMatching(options: RunMatchingOptions): Promise<Matching
   const allDriverIds = scenario.drivers.map((driver) => driver.id);
   const ledger = new EvaluationLedger(allDriverIds);
   const lookups = buildLookups(scenario);
+  // Stage 2 builds these once; every later stage reads the remaining route
+  // from here rather than rebuilding it per stage.
+  const corridors = new Map<string, RideCorridor>();
 
   let liveDriverIds: string[] = [...allDriverIds];
   let requestRejection: MatchReason | undefined;
@@ -70,6 +74,7 @@ export async function runMatching(options: RunMatchingOptions): Promise<Matching
       liveDriverIds,
       ledger,
       lookups,
+      corridors,
     });
 
     const outcome = await stage.execute(context);
@@ -117,8 +122,12 @@ export async function runMatching(options: RunMatchingOptions): Promise<Matching
           ...(verdict.metrics ? { metrics: verdict.metrics } : {}),
         };
       } else if (candidateSet && !candidateSet.has(driverId)) {
-        // DORMANT with the branch above. Task 11 decides whether an
-        // out-of-corridor driver keeps this code or gets `CORRIDOR_NO_MATCH`.
+        // Task 11 settled the open question here: stage 2 rejects
+        // out-of-corridor drivers itself, with `CORRIDOR_NO_MATCH` and the hop
+        // count that earned it. This branch survives as the generic safety net
+        // for any discovery stage that returns a candidate set without also
+        // accounting for the live drivers it left out — it can only speak
+        // about the search, not about a particular ride.
         result = {
           driverId,
           status: "FAILED",
@@ -201,6 +210,7 @@ function createContext(input: {
   liveDriverIds: readonly string[];
   ledger: EvaluationLedger;
   lookups: ScenarioLookups;
+  corridors: Map<string, RideCorridor>;
 }): MatchingContext {
   const { scenario, request, settings, routing, liveDriverIds, ledger, lookups } = input;
 
@@ -220,6 +230,10 @@ function createContext(input: {
       return driver?.currentRideId ? lookups.ridesById.get(driver.currentRideId) : undefined;
     },
     getMetrics: (driverId: string): DriverMetrics => ledger.getMetrics(driverId),
+    getCorridor: (driverId: string): RideCorridor | undefined => input.corridors.get(driverId),
+    setCorridor: (driverId: string, corridor: RideCorridor): void => {
+      input.corridors.set(driverId, corridor);
+    },
     recordMetrics: (driverId: string, metrics: DriverMetrics): void =>
       ledger.recordMetrics(driverId, metrics),
     recordInsertion: (driverId: string, insertion: RouteInsertionResult): void =>
