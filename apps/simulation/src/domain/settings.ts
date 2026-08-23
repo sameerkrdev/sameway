@@ -56,11 +56,10 @@ export const DEFAULT_SETTINGS: MatchingSettings = {
   routingMode: "AUTO",
   stageOrder: DEFAULT_STAGE_ORDER,
   weights: {
-    eta: 30,
-    distance: 20,
-    detour: 30,
-    routeQuality: 20,
-    fairness: 0,
+    driverImpact: 30,
+    existingPassengerImpact: 30,
+    newPassengerImpact: 25,
+    pickupDelay: 15,
   },
 };
 

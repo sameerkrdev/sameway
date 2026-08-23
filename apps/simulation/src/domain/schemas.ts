@@ -95,11 +95,10 @@ const rideRequestSchema = z.object({
 });
 
 const scoringWeightsSchema = z.object({
-  eta: z.number().min(0),
-  distance: z.number().min(0),
-  detour: z.number().min(0),
-  routeQuality: z.number().min(0),
-  fairness: z.number().min(0),
+  driverImpact: z.number().min(0),
+  existingPassengerImpact: z.number().min(0),
+  newPassengerImpact: z.number().min(0),
+  pickupDelay: z.number().min(0),
 });
 
 const stageIdSchema = z.enum([

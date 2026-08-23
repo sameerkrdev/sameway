@@ -138,13 +138,21 @@ export interface RideRequest {
 
 export type RoutingMode = "AUTO" | "GOOGLE" | "MOCK";
 
+/**
+ * The Overview's fairness formula. Lower is better throughout — these measure
+ * harm, not merit, and the whole point is that the vehicle-cost-optimal route
+ * is often not the fairest one.
+ */
+/**
+ * The Overview's fairness formula. Lower is better throughout — these measure
+ * harm, not merit, and the whole point is that the vehicle-cost-optimal route
+ * is often not the fairest one.
+ */
 export interface ScoringWeights {
-  eta: number;
-  distance: number;
-  detour: number;
-  routeQuality: number;
-  /** Experimental. Defaults to 0 so fairness never perturbs a run silently. */
-  fairness: number;
+  driverImpact: number;
+  existingPassengerImpact: number;
+  newPassengerImpact: number;
+  pickupDelay: number;
 }
 
 /**

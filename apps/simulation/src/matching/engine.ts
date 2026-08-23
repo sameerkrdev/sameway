@@ -322,7 +322,8 @@ function rankEvaluations(evaluations: readonly DriverEvaluation[]): DriverEvalua
   const passed = evaluations.filter((evaluation) => evaluation.finalStatus === "PASSED");
 
   passed.sort((a, b) => {
-    const scoreDelta = (b.finalScore ?? 0) - (a.finalScore ?? 0);
+    // Lower is better: the score measures harm, not merit.
+    const scoreDelta = (a.finalScore ?? 0) - (b.finalScore ?? 0);
     // Ties break on driver id so repeated runs produce a stable ordering.
     return scoreDelta !== 0 ? scoreDelta : a.driverId.localeCompare(b.driverId);
   });

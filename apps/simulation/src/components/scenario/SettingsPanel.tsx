@@ -1,6 +1,5 @@
-import { FlaskConical, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Separator, Slider } from "@/components/ui/misc";
@@ -19,11 +18,10 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { NumberField } from "./VehicleForm";
 
 const WEIGHT_LABELS: Record<keyof ScoringWeights, string> = {
-  eta: "Pickup ETA",
-  distance: "Pickup distance",
-  detour: "Route detour",
-  routeQuality: "Existing rider impact",
-  fairness: "Driver fairness",
+  driverImpact: "Driver impact",
+  existingPassengerImpact: "Existing rider impact",
+  newPassengerImpact: "New rider impact",
+  pickupDelay: "Pickup wait",
 };
 
 export function SettingsPanel() {
@@ -198,15 +196,7 @@ export function SettingsPanel() {
         {(Object.keys(WEIGHT_LABELS) as (keyof ScoringWeights)[]).map((key) => (
           <div key={key}>
             <div className="flex items-center justify-between">
-              <Label>
-                {WEIGHT_LABELS[key]}
-                {key === "fairness" ? (
-                  <Badge variant="warn" className="ml-1">
-                    <FlaskConical className="size-3" />
-                    Experimental
-                  </Badge>
-                ) : null}
-              </Label>
+              <Label>{WEIGHT_LABELS[key]}</Label>
               <span className="tabular text-[11px] text-[var(--muted-foreground)]">
                 {settings.weights[key]} → {(normalized[key] * 100).toFixed(0)}%
               </span>

@@ -1,7 +1,6 @@
 import { normalizeLowerIsBetter, normalizeWeights } from "../normalize";
 import { reason } from "../reasons";
 import type {
-  DriverMetrics,
   DriverVerdict,
   MatchingContext,
   MatchingStage,
@@ -11,35 +10,28 @@ import type {
 } from "../types";
 
 /**
- * Normalised value for a component whose real threshold no longer exists.
+ * Stage 11. Among the routes that are all valid, which is best?
  *
- * Stages 8 and 9 (Tasks 17-18) start populating `roadEtaMin` and
- * `roadDistanceKm` before Task 20 rewrites this stage. Between those points
- * there is no honest threshold to normalise them against, so both components
- * contribute a fixed zero. A wrong-but-plausible threshold would keep the
- * final score looking reasonable while it silently stopped discriminating.
- */
-const UNSCORED_PLACEHOLDER = 0;
-
-/** Idle time at which the experimental fairness component saturates at 100. */
-const FAIRNESS_REFERENCE_IDLE_MINUTES = 60;
-
-/**
- * Stage 8. Ranks the survivors.
+ * Validity is not optimality. Several insertions can clear every hard limit
+ * while distributing the cost very differently, and the vehicle-cost-cheapest
+ * one is frequently the one that hurts a single rider most. That is exactly
+ * why this scoring stays in-house rather than being delegated to the solver,
+ * whose objective is the vehicle's cost and nobody else's.
  *
- * Every component is normalised to 0-100 against its own configured threshold
- * before any weighting happens, and the weights themselves are rescaled to sum
- * to 1. That keeps the final score on the same 0-100 scale as its parts and
- * makes each component's contribution a real, displayable number rather than
- * an artefact of unit choice.
+ * Every component measures harm and is normalised against its own stage-10
+ * threshold, so the total stays on one 0-100 scale and each contribution is a
+ * real displayable number rather than an artefact of unit choice.
  *
- * Nothing is rejected here — a driver that failed a hard filter never reaches
- * this stage.
+ * Known limitation: `OptimizeTours` returns one sequence per driver, so this
+ * ranks *across drivers*, not across sequences for a single driver. The
+ * Overview's Route 1/2/3 example — our fairness score overriding Google's
+ * winner among several candidate sequences — needs the Phase 3 in-house
+ * insertion search. The results panel says so.
  */
 export const scoringStage: MatchingStage = {
   id: "scoring",
   name: "Scoring",
-  description: "Normalises each metric to 0-100 and applies the configured weights.",
+  description: "Fairness-weighted ranking across drivers. Lower is better.",
 
   execute(context: MatchingContext): Promise<StageOutcome> {
     const { settings } = context;
@@ -47,65 +39,57 @@ export const scoringStage: MatchingStage = {
     const verdicts: DriverVerdict[] = [];
 
     for (const driverId of context.liveDriverIds) {
-      const driver = context.getDriver(driverId);
       const metrics = context.getMetrics(driverId);
+      const isIdle = context.getCorridor(driverId)?.isIdle ?? true;
+
+      // An idle driver's `additionalDurationMin` is measured against a zero
+      // baseline, so it is the whole fare rather than a detour. Scoring that as
+      // driver harm would penalise every idle driver in proportion to the
+      // length of the trip they were offered, which is backwards. Stages 7 and
+      // 10 already exempt them for the same reason.
+      const driverImpactMin = isIdle ? 0 : (metrics.additionalDurationMin ?? 0);
 
       const components: ScoreComponent[] = [
         {
-          key: "eta",
-          label: "Pickup ETA",
-          rawValue: metrics.roadEtaMin,
-          // Task 20 replaces this component. Its threshold (`maxPickupEtaMin`)
-          // was deleted with the ETA stage, and no surviving setting means the
-          // same thing: a delay budget is not an ETA cap. Pinned to the
-          // placeholder rather than normalised against a plausible-but-wrong
-          // threshold, so that when Task 17 starts populating `roadEtaMin` this
-          // component stays visibly inert instead of quietly going constant.
-          normalized: UNSCORED_PLACEHOLDER,
-          weight: weights.eta,
+          key: "driverImpact",
+          label: "Driver impact",
+          rawValue: driverImpactMin,
+          normalized: normalizeLowerIsBetter(driverImpactMin, settings.maxAdditionalDurationMin),
+          weight: weights.driverImpact,
           contribution: 0,
         },
         {
-          key: "distance",
-          label: "Pickup distance",
-          rawValue: metrics.roadDistanceKm,
-          // Task 20 replaces this component. `maxPickupToRouteDistanceKm` is a
-          // perpendicular corridor offset, not a road distance; scoring road
-          // distance against it would clamp every driver past 1.5 km to zero.
-          normalized: UNSCORED_PLACEHOLDER,
-          weight: weights.distance,
-          contribution: 0,
-        },
-        {
-          key: "detour",
-          label: "Route detour",
-          rawValue: metrics.detourPercent,
-          normalized: normalizeLowerIsBetter(metrics.detourPercent ?? 0, settings.maxDetourPercent),
-          weight: weights.detour,
-          contribution: 0,
-        },
-        {
-          key: "routeQuality",
+          key: "existingPassengerImpact",
           label: "Existing rider impact",
           rawValue: metrics.maximumExistingPassengerDelayMin,
           normalized: normalizeLowerIsBetter(
             metrics.maximumExistingPassengerDelayMin ?? 0,
             settings.maxExistingPassengerDelayMin,
           ),
-          weight: weights.routeQuality,
+          weight: weights.existingPassengerImpact,
           contribution: 0,
         },
         {
-          key: "fairness",
-          label: "Driver fairness",
-          rawValue: driver?.history.idleMinutes,
-          normalized: fairnessScore(driver?.history.idleMinutes),
-          weight: weights.fairness,
+          key: "newPassengerImpact",
+          label: "New rider impact",
+          rawValue: metrics.newPassengerRideDetourMin,
+          normalized: normalizeLowerIsBetter(
+            metrics.newPassengerRideDetourMin ?? 0,
+            settings.maxNewPassengerRideDetourMin,
+          ),
+          weight: weights.newPassengerImpact,
           contribution: 0,
-          // We do not have a real fairness model. Labelling it keeps anyone
-          // from reading the number as more than the placeholder it is; its
-          // default weight of zero keeps it out of results entirely.
-          experimental: true,
+        },
+        {
+          key: "pickupDelay",
+          label: "Pickup wait",
+          rawValue: metrics.newPassengerPickupDelayMin,
+          normalized: normalizeLowerIsBetter(
+            metrics.newPassengerPickupDelayMin ?? 0,
+            settings.maxNewPassengerPickupDelayMin,
+          ),
+          weight: weights.pickupDelay,
+          contribution: 0,
         },
       ];
 
@@ -123,43 +107,28 @@ export const scoringStage: MatchingStage = {
         driverId,
         status: "PASSED",
         reasons: [
-          reason("ROUTE_FEASIBLE", `Scored ${finalScore.toFixed(1)} out of 100`, {
+          reason("ROUTE_FEASIBLE", `Fairness score ${finalScore.toFixed(1)} (lower is better)`, {
             value: Number(finalScore.toFixed(2)),
-            threshold: 100,
+            threshold: 0,
           }),
         ],
-        metrics: scoreMetrics(components, finalScore, metrics),
+        metrics: scoreMetrics(components, finalScore),
       });
     }
 
-    return Promise.resolve({
-      verdicts,
-      notes: { weights, fairnessReferenceIdleMinutes: FAIRNESS_REFERENCE_IDLE_MINUTES },
-    });
+    return Promise.resolve({ verdicts, notes: { weights } });
   },
 };
-
-function fairnessScore(idleMinutes: number | undefined): number {
-  if (idleMinutes === undefined) {
-    return 0;
-  }
-  return Math.min(100, (idleMinutes / FAIRNESS_REFERENCE_IDLE_MINUTES) * 100);
-}
 
 function scoreMetrics(
   components: readonly ScoreComponent[],
   finalScore: number,
-  metrics: DriverMetrics,
 ): Record<string, number> {
   const output: Record<string, number> = { finalScore: round(finalScore, 2) };
 
   for (const component of components) {
     output[`${component.key}Score`] = round(component.normalized, 1);
     output[`${component.key}Contribution`] = round(component.contribution, 2);
-  }
-
-  if (metrics.roadEtaMin !== undefined) {
-    output.roadEtaMin = round(metrics.roadEtaMin, 2);
   }
 
   return output;

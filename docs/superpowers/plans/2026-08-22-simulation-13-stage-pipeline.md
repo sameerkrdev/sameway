@@ -6767,7 +6767,7 @@ git commit -m "feat(simulation): stage 10 hard constraints and pooling policy"
 
 ---
 
-## Task 20: Stage 11 — Fairness scoring
+## Task 20: Stage 11 — Fairness scoring — LANDED
 
 **Files:**
 - Modify: `src/domain/entities.ts` (`ScoringWeights`), `src/domain/settings.ts`, `src/domain/schemas.ts`
@@ -6781,7 +6781,7 @@ git commit -m "feat(simulation): stage 10 hard constraints and pooling policy"
 - Consumes: metrics from stage 9 (Task 18); thresholds from settings.
 - Produces: `ScoringWeights = { driverImpact; existingPassengerImpact; newPassengerImpact; pickupDelay }`, `ScoreComponent.key: "driverImpact" | "existingPassengerImpact" | "newPassengerImpact" | "pickupDelay"`. **Lower `finalScore` is better** — the inverse of the old convention.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/test/scoring.test.ts`:
 
@@ -6889,7 +6889,7 @@ describe("scoring", () => {
 });
 ```
 
-- [ ] **Step 2: Change the weight shape**
+- [x] **Step 2: Change the weight shape**
 
 In `src/domain/entities.ts`:
 
@@ -6931,7 +6931,7 @@ const scoringWeightsSchema = z.object({
 
 `WeightKey` in `src/matching/normalize.ts` is `keyof ScoringWeights` and follows automatically. `ScoreComponent.key` in `src/matching/types.ts` becomes the same union.
 
-- [ ] **Step 3: Implement the stage**
+- [x] **Step 3: Implement the stage**
 
 Replace `src/matching/stages/scoring.ts`:
 
@@ -7093,7 +7093,7 @@ export function normalizeLowerIsBetter(
 }
 ```
 
-- [ ] **Step 4: Flip the ranking direction**
+- [x] **Step 4: Flip the ranking direction**
 
 In `src/matching/engine.ts`, `rankEvaluations` sorts descending. Lower is now better:
 
@@ -7106,12 +7106,12 @@ In `src/matching/engine.ts`, `rankEvaluations` sorts descending. Lower is now be
   });
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `bun run check-types && bun run test src/test/scoring.test.ts`
 Expected: PASS, all six cases. Fix any UI file still referencing `weights.eta` / `weights.detour` / `weights.fairness` — Task 22 does the proper UI pass; here, just make it compile.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/domain src/matching src/test/scoring.test.ts

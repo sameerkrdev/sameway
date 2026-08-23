@@ -15,15 +15,19 @@ describe("detour arithmetic", () => {
 });
 
 describe("score normalisation", () => {
-  it("returns 100 at zero and 0 at the threshold", () => {
-    expect(normalizeLowerIsBetter(0, 15)).toBe(100);
-    expect(normalizeLowerIsBetter(15, 15)).toBe(0);
+  it("returns 0 for no harm and 100 at the threshold", () => {
+    // The scale measures harm, so it runs upward from zero. Stage 11 sums
+    // these, and the winner is the lowest total.
+    expect(normalizeLowerIsBetter(0, 15)).toBe(0);
+    expect(normalizeLowerIsBetter(15, 15)).toBe(100);
     expect(normalizeLowerIsBetter(7.5, 15)).toBe(50);
   });
 
-  it("clamps rather than going negative past the threshold", () => {
-    expect(normalizeLowerIsBetter(30, 15)).toBe(0);
-    expect(normalizeLowerIsBetter(-5, 15)).toBe(100);
+  it("clamps rather than running past the threshold", () => {
+    // Twice over the limit is not twice as rejected — stage 10 already
+    // rejected it.
+    expect(normalizeLowerIsBetter(30, 15)).toBe(100);
+    expect(normalizeLowerIsBetter(-5, 15)).toBe(0);
   });
 
   it("scores an absent measurement as zero rather than NaN", () => {
@@ -33,15 +37,14 @@ describe("score normalisation", () => {
 
   it("rescales weights to sum to one so contributions stay on a 0-100 scale", () => {
     const weights = normalizeWeights({
-      eta: 30,
-      distance: 20,
-      detour: 30,
-      routeQuality: 20,
-      fairness: 0,
+      driverImpact: 30,
+      existingPassengerImpact: 30,
+      newPassengerImpact: 25,
+      pickupDelay: 15,
     });
 
-    expect(weights.eta).toBeCloseTo(0.3, 10);
-    expect(weights.fairness).toBe(0);
+    expect(weights.driverImpact).toBeCloseTo(0.3, 10);
+    expect(weights.pickupDelay).toBeCloseTo(0.15, 10);
 
     const total = Object.values(weights).reduce((sum, weight) => sum + weight, 0);
     expect(total).toBeCloseTo(1, 10);
@@ -49,14 +52,13 @@ describe("score normalisation", () => {
 
   it("falls back to an equal split rather than dividing by zero", () => {
     const weights = normalizeWeights({
-      eta: 0,
-      distance: 0,
-      detour: 0,
-      routeQuality: 0,
-      fairness: 0,
+      driverImpact: 0,
+      existingPassengerImpact: 0,
+      newPassengerImpact: 0,
+      pickupDelay: 0,
     });
 
-    expect(weights.eta).toBeCloseTo(0.2, 10);
+    expect(weights.driverImpact).toBeCloseTo(0.25, 10);
     const total = Object.values(weights).reduce((sum, weight) => sum + weight, 0);
     expect(total).toBeCloseTo(1, 10);
   });

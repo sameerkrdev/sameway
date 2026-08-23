@@ -120,7 +120,6 @@ export function ScoreContributions({ breakdown }: { breakdown: ScoreBreakdown })
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-[var(--muted-foreground)]">
                 {component.label}
-                {component.experimental ? " (experimental)" : ""}
               </span>
               <span className="tabular">
                 {component.normalized.toFixed(0)} × {(component.weight * 100).toFixed(0)}% ={" "}

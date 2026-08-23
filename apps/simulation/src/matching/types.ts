@@ -4,6 +4,7 @@ import type {
   MatchingSettings,
   RideRequest,
   Scenario,
+  ScoringWeights,
   StageId,
   Stop,
   Vehicle,
@@ -81,7 +82,7 @@ export interface DriverMetrics {
 }
 
 export interface ScoreComponent {
-  key: "eta" | "distance" | "detour" | "routeQuality" | "fairness";
+  key: keyof ScoringWeights;
   label: string;
   /** The underlying measurement, in its own natural unit. */
   rawValue: number | undefined;
@@ -91,7 +92,6 @@ export interface ScoreComponent {
   weight: number;
   /** `normalized * weight`; these sum to `finalScore`. */
   contribution: number;
-  experimental?: boolean;
 }
 
 export interface ScoreBreakdown {
