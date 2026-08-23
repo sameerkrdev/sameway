@@ -182,7 +182,7 @@ export function SettingsPanel() {
           <NumberField
             label="Optimizer timeout (ms)"
             value={settings.optimizerTimeoutMs}
-            min={1}
+            min={1000}
             onChange={(value) => set("optimizerTimeoutMs", value)}
           />
           <NumberField

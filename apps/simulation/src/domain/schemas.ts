@@ -136,7 +136,7 @@ export const matchingSettingsSchema = z.object({
   maxRoutedInsertionsPerDriver: z.number().int().min(1),
   maxRoutingCallsPerRun: z.number().int().min(1),
   maxOptimizerCallsPerRun: z.number().int().min(1),
-  optimizerTimeoutMs: z.number().int().min(50),
+  optimizerTimeoutMs: z.number().int().min(1000).max(1_800_000),
   cacheCoordinatePrecision: z.number().int().min(0).max(12).nullable(),
   routingMode: z.enum(["AUTO", "GOOGLE", "MOCK"]),
   stageOrder: z.array(stageIdSchema).min(1),

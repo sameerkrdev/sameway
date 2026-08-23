@@ -121,6 +121,36 @@ describe("readOptimizeToursResponse", () => {
 
     expect(() => readOptimizeToursResponse(request, body)).toThrow(/not-a-number/);
   });
+
+  it("treats omitted shipmentIndex and isPickup as protobuf defaults (0 / false)", () => {
+    const singleShipmentRequest: OptimizeToursRequest = {
+      ...request,
+      shipments: [request.shipments[0]!],
+    };
+    const body = {
+      routes: [
+        {
+          visits: [
+            { isPickup: true, startTime: "1970-01-01T00:04:00Z" },
+            { startTime: "1970-01-01T00:15:00Z" },
+          ],
+          transitions: [
+            { travelDistanceMeters: 1400, travelDuration: "240s" },
+            { travelDistanceMeters: 3500, travelDuration: "480s" },
+          ],
+          vehicleStartTime: "1970-01-01T00:00:00Z",
+        },
+      ],
+      skippedShipments: [],
+    };
+
+    const result = readOptimizeToursResponse(singleShipmentRequest, body);
+
+    expect(result.visits.map((visit) => `${visit.passengerId}:${visit.type}`)).toEqual([
+      "pA:PICKUP",
+      "pA:DROP",
+    ]);
+  });
 });
 
 describe("toProposedStopSequence", () => {

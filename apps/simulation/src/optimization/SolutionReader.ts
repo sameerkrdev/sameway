@@ -84,7 +84,7 @@ export function readOptimizeToursResponse(
   const route = raw.routes?.[0];
 
   const skippedShipmentIds = (raw.skippedShipments ?? [])
-    .map((skipped) => (skipped.index === undefined ? undefined : request.shipments[skipped.index]?.id))
+    .map((skipped) => request.shipments[skipped.index ?? 0]?.id)
     .filter((id): id is string => id !== undefined);
 
   if (!route || !route.visits || route.visits.length === 0) {
@@ -117,13 +117,16 @@ export function readOptimizeToursResponse(
 
   for (let index = 0; index < rawVisits.length; index += 1) {
     const rawVisit = rawVisits[index]!;
-    const shipment = request.shipments[rawVisit.shipmentIndex ?? -1];
+    // Protobuf JSON omits default values: shipmentIndex 0 and isPickup false
+    // simply do not appear on the wire.
+    const shipmentIndex = rawVisit.shipmentIndex ?? 0;
+    const shipment = request.shipments[shipmentIndex];
 
     if (!shipment) {
-      throw new Error(`Solver referenced unknown shipmentIndex ${String(rawVisit.shipmentIndex)}`);
+      throw new Error(`Solver referenced unknown shipmentIndex ${String(shipmentIndex)}`);
     }
 
-    const type = rawVisit.isPickup ? "PICKUP" : "DROP";
+    const type = rawVisit.isPickup === true ? "PICKUP" : "DROP";
     visits.push({
       shipmentId: shipment.id,
       passengerId: shipment.passengerId,

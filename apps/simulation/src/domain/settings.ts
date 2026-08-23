@@ -50,7 +50,7 @@ export const DEFAULT_SETTINGS: MatchingSettings = {
   maxRoutedInsertionsPerDriver: 6,
   maxRoutingCallsPerRun: 150,
   maxOptimizerCallsPerRun: 40,
-  optimizerTimeoutMs: 400,
+  optimizerTimeoutMs: 10_000,
   cacheCoordinatePrecision: null,
 
   routingMode: "AUTO",
