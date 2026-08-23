@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import { EmptyState, Metric } from "@/components/shared/StatusIcon";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea, Separator } from "@/components/ui/misc";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatMinutes, formatPercent, formatScore } from "@/lib/format";
@@ -19,9 +20,16 @@ export function MatchingResults() {
   const selectedDriverId = useMatchingStore((state) => state.selectedDriverId);
   const selectDriver = useMatchingStore((state) => state.selectDriver);
   const scenario = useScenarioStore((state) => state.scenario);
+  const commitMatch = useScenarioStore((state) => state.commitMatch);
+  const undoCommit = useScenarioStore((state) => state.undoCommit);
+  const lastCommittedScenario = useScenarioStore((state) => state.lastCommittedScenario);
   const focusOn = useMapStore((state) => state.focusOn);
 
   const [detailsOpen, setDetailsOpen] = useState(false);
+
+  // Only the top-ranked driver is offered: committing a lower-ranked match
+  // would silently discard the fairness ordering the run just produced.
+  const winnerPlan = run?.result.ranked[0]?.commitPlan;
 
   const driversById = useMemo(
     () => new Map(scenario.drivers.map((driver) => [driver.id, driver])),
@@ -85,7 +93,11 @@ export function MatchingResults() {
           <>
             <Separator className="my-1" />
             <Metric label="Best driver" value={result.summary.bestDriverId} />
-            <Metric label="Score" value={formatScore(result.summary.bestScore)} />
+            <Metric
+              label="Fairness cost"
+              value={formatScore(result.summary.bestScore)}
+              hint="Lower is better — this is weighted harm across the driver and every rider"
+            />
             <Metric
               label="ETA"
               value={formatMinutes(
@@ -112,6 +124,28 @@ export function MatchingResults() {
               {result.ranked.length === 0 ? (
                 <EmptyState message="No driver passed every filter. The rejection tab explains why." />
               ) : null}
+
+              {winnerPlan ? (
+                <div className="flex items-center gap-2 rounded-md border border-[var(--border)] px-2 py-1.5">
+                  <p className="min-w-0 flex-1 text-[11px] text-[var(--muted-foreground)]">
+                    Committing makes this route the new baseline. The next request is matched
+                    against it, not against the route before the insertion.
+                  </p>
+                  <Button size="xs" onClick={() => commitMatch(winnerPlan)}>
+                    Commit winner
+                  </Button>
+                </div>
+              ) : null}
+
+              {lastCommittedScenario ? (
+                <div className="flex items-center gap-2 rounded-md border border-[var(--warn)] px-2 py-1.5">
+                  <p className="min-w-0 flex-1 text-[11px]">Last commit applied to the scenario.</p>
+                  <Button size="xs" variant="outline" onClick={undoCommit}>
+                    Undo commit
+                  </Button>
+                </div>
+              ) : null}
+
               {result.ranked.map((evaluation) => (
                 <DriverMatchCard
                   key={evaluation.driverId}

@@ -24,7 +24,9 @@ export function StagePipeline({
   onSelectStage: (index: number | null) => void;
 }) {
   return (
-    <div className="flex items-center gap-1 overflow-x-auto">
+    // Fourteen segments do not fit a single row at any sensible width, so the
+    // funnel wraps rather than hiding half of itself behind a scrollbar.
+    <div className="flex flex-wrap items-center gap-1">
       <Button
         size="xs"
         variant={replayStageIndex === null ? "default" : "ghost"}
@@ -45,7 +47,7 @@ export function StagePipeline({
               onClick={() => onSelectStage(active ? null : index)}
               title={meta.description}
               className={cn(
-                "min-w-24 rounded-md border px-2 py-1 text-left transition-colors",
+                "min-w-0 flex-1 basis-28 rounded-md border px-2 py-1 text-left transition-colors",
                 active
                   ? "border-[var(--primary)] bg-[color-mix(in_oklab,var(--primary)_14%,transparent)]"
                   : "border-[var(--border)] hover:bg-[var(--accent)]",

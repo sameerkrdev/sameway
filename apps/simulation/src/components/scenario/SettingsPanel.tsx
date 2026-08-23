@@ -173,12 +173,35 @@ export function SettingsPanel() {
             min={1}
             onChange={(value) => set("maxRoutingCallsPerRun", value)}
           />
+          <NumberField
+            label="Max optimizer calls / run"
+            value={settings.maxOptimizerCallsPerRun}
+            min={1}
+            onChange={(value) => set("maxOptimizerCallsPerRun", value)}
+          />
+          <NumberField
+            label="Optimizer timeout (ms)"
+            value={settings.optimizerTimeoutMs}
+            min={1}
+            onChange={(value) => set("optimizerTimeoutMs", value)}
+          />
+          <NumberField
+            label="Estimated speed (km/h)"
+            value={settings.estimatedSpeedKmh}
+            min={1}
+            onChange={(value) => set("estimatedSpeedKmh", value)}
+          />
         </div>
+        <p className="text-[11px] text-[var(--muted-foreground)]">
+          Routing and the optimizer have separate budgets because they are billed differently:
+          routing prices per call, OptimizeTours per shipment. Estimated speed is used only by the
+          stage 6 pre-filter, never for a reported ETA.
+        </p>
       </Section>
 
       <Section title="Stage order">
         <p className="text-[11px] text-[var(--muted-foreground)]">
-          The thirteen stages have strict data dependencies, so the Overview&apos;s order is the
+          The fourteen stages have strict data dependencies, so the Overview&apos;s order is the
           only one that runs end to end.
         </p>
         <div className="flex gap-2">

@@ -162,9 +162,14 @@ export function DriverDetailSheet({
               <Separator className="my-3" />
               <section>
                 <h4 className="text-[11px] font-semibold tracking-wide uppercase">
-                  Score {formatScore(evaluation.finalScore)}
+                  Fairness cost {formatScore(evaluation.finalScore)} · lower is better
                 </h4>
                 <ScoreContributions breakdown={evaluation.scoreBreakdown} />
+                <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
+                  Google returns one sequence per driver, so this ranks drivers, not alternative
+                  sequences for the same driver. Comparing several sequences for one driver needs
+                  the in-house insertion search (Phase 3).
+                </p>
               </section>
             </>
           ) : null}

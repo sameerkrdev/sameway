@@ -7403,7 +7403,7 @@ git commit -m "feat(simulation): stage 12 commit plan and rolling-horizon baseli
 
 ---
 
-## Task 22: UI for the new pipeline
+## Task 22: UI for the new pipeline — LANDED
 
 **Files:**
 - Modify: `src/components/debug/StagePipeline.tsx`, `StageDetails.tsx`, `DebugConsole.tsx`, `RoutingBanner.tsx`
@@ -7416,7 +7416,7 @@ git commit -m "feat(simulation): stage 12 commit plan and rolling-horizon baseli
 - Consumes: `STAGE_METADATA` (Task 9), `MatchingResult.optimizerTelemetry` (Task 17), `CommitPlan` (Task 21), the new `ScoringWeights` (Task 20).
 - Produces: no new module APIs — UI only.
 
-- [ ] **Step 1: Widen the funnel and stage details**
+- [x] **Step 1: Widen the funnel and stage details**
 
 `StagePipeline.tsx` renders one segment per stage from `result.stageResults`, so it needs no structural change — but fourteen segments will not fit the old fixed widths. Switch its container to a wrapping flex row (`flex flex-wrap gap-1`) with `min-w-0 flex-1 basis-[7rem]` segments, and render `STAGE_METADATA[stageId].shortLabel` rather than the full name.
 
@@ -7425,7 +7425,7 @@ git commit -m "feat(simulation): stage 12 commit plan and rolling-horizon baseli
 - `plansByDriver` (stage 12) — the ordered stop sequence with re-stamped ETAs.
 - Keep the existing `rings` renderer; stage 2's note shape is unchanged.
 
-- [ ] **Step 2: Rewrite the settings panel fields**
+- [x] **Step 2: Rewrite the settings panel fields**
 
 `SettingsPanel.tsx` has inputs bound to `maxPickupEtaMin` and `maxPickupRoadDistanceKm`, which no longer exist, and to the five old weights. Replace with:
 
@@ -7437,7 +7437,7 @@ git commit -m "feat(simulation): stage 12 commit plan and rolling-horizon baseli
 
 Delete the stage-order A/B selector entirely — `BRIEF_STAGE_ORDER` no longer exists.
 
-- [ ] **Step 3: Show optimizer telemetry and the unavailable state**
+- [x] **Step 3: Show optimizer telemetry and the unavailable state**
 
 In `DebugConsole.tsx`, add a second telemetry block beside the routing one showing `optimizerTelemetry`: calls, shipments billed, cache hits/misses, budget used and remaining.
 
@@ -7447,7 +7447,7 @@ In `RoutingBanner.tsx`, keep the existing MOCK ROUTING banner and add a second, 
 
 In `useRunMatching.ts`, catch `OptimizerCredentialsMissingError` from `findMatches` and store it as a run-level error rather than letting it surface as an unhandled rejection. No partial result is displayed — the run did not happen.
 
-- [ ] **Step 4: Correct the score direction in the results UI**
+- [x] **Step 4: Correct the score direction in the results UI**
 
 `MatchingResults.tsx` and `DriverMatchCard.tsx` present a higher score as better ("Scored 82 out of 100"). Invert the language: label it **"Fairness cost"**, state "lower is better" next to the heading, and ensure any progress bar fills proportionally to harm rather than merit.
 
@@ -7455,18 +7455,18 @@ Add the limitation note under the score breakdown in `DriverDetailSheet.tsx`:
 
 > Google returns one sequence per driver, so this ranks drivers, not alternative sequences for the same driver. Comparing several sequences for one driver needs the in-house insertion search (Phase 3).
 
-- [ ] **Step 5: Add the commit action**
+- [x] **Step 5: Add the commit action**
 
 In `MatchingResults.tsx`, add a **Commit winner** button on the top-ranked driver's card, enabled only when `evaluation.commitPlan` exists. It calls `scenarioStore.commitMatch(evaluation.commitPlan)`. Add an **Undo commit** button that appears while `lastCommittedScenario` is non-null.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 Run: `bun run check-types && bun run lint && bun run build`
 Expected: all pass.
 
 Run: `bun run dev`, then in the browser — load the **Airport Pooling** preset, click **Run matching**, and confirm: fourteen funnel segments render, the rejection dashboard groups the new `CORRIDOR` / `DIRECTION` / `OPTIMIZER` categories, the optimizer telemetry block populates, and **Commit winner** followed by a second **Run matching** shows the new passenger already in the route.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/components src/hooks

@@ -15,18 +15,14 @@ import type { MatchingRun } from "@/matching/types";
  * — rather than the algorithm — ended the search.
  */
 export function DebugConsole({ run }: { run: MatchingRun }) {
-  const { telemetry } = run.result;
-
-  const insertionNotes = run.result.stageResults.find(
-    (stage) => stage.stageId === "roadRouting",
-  )?.notes;
+  const { telemetry, optimizerTelemetry } = run.result;
 
   const h3Notes = run.result.stageResults.find(
     (stage) => stage.stageId === "h3RouteCorridor",
   )?.notes;
 
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
       <section>
         <h4 className="text-[11px] font-semibold tracking-wide uppercase">Routing</h4>
         <div className="mt-1">
@@ -45,6 +41,31 @@ export function DebugConsole({ run }: { run: MatchingRun }) {
           <p className="mt-1 flex items-start gap-1 text-[11px] text-[var(--warn)]">
             <TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden />
             {telemetry.fallbackReason}
+          </p>
+        ) : null}
+      </section>
+
+      <section>
+        <h4 className="text-[11px] font-semibold tracking-wide uppercase">Optimizer</h4>
+        <div className="mt-1">
+          <Metric label="Engine" value={optimizerTelemetry.engine} />
+          <Metric label="Solver calls" value={String(optimizerTelemetry.calls)} />
+          <Metric
+            label="Shipments billed"
+            value={String(optimizerTelemetry.shipmentsBilled)}
+            hint="OptimizeTours prices per shipment, so this is the number that costs money"
+          />
+          <Metric label="Cache hits" value={String(optimizerTelemetry.cacheHits)} />
+          <Metric label="Cache misses" value={String(optimizerTelemetry.cacheMisses)} />
+          <Metric
+            label="Budget"
+            value={`${optimizerTelemetry.budgetUsed} / ${optimizerTelemetry.budgetLimit}`}
+          />
+        </div>
+        {optimizerTelemetry.unavailableReason ? (
+          <p className="mt-1 flex items-start gap-1 text-[11px] text-[var(--warn)]">
+            <TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden />
+            {optimizerTelemetry.unavailableReason}
           </p>
         ) : null}
       </section>
@@ -75,15 +96,9 @@ export function DebugConsole({ run }: { run: MatchingRun }) {
             hint="True when the ring limit was reached before enough usable candidates were found"
           />
           <Separator className="my-1" />
-          <Metric
-            label="Insertions enumerated"
-            value={String(insertionNotes?.insertionsEnumerated ?? "—")}
-          />
-          <Metric
-            label="Pruned before routing"
-            value={String(insertionNotes?.insertionsPrunedBeforeRouting ?? "—")}
-          />
-          <Metric label="Routed" value={String(insertionNotes?.insertionsRouted ?? "—")} />
+          <Metric label="Candidates" value={String(run.result.summary.candidates)} />
+          <Metric label="Matched" value={String(run.result.summary.passed)} />
+          <Metric label="Rejected" value={String(run.result.summary.rejected)} />
         </div>
         <div className="mt-1 flex flex-wrap gap-1">
           <Badge variant="outline">run {run.id}</Badge>
