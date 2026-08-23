@@ -8,10 +8,10 @@ import { evaluationFor, failureCodes, runFixture, stageStatus } from "./fixtures
 /**
  * One scenario that walks the pipeline end to end.
  *
- * Stages 0 through 6 are implemented; the five after them are still no-op
+ * Stages 0 through 7 are implemented; the four after them are still no-op
  * placeholders. The assertions below pin both halves: what the implemented
  * filters decide, and the fact that every unimplemented stage passes everyone
- * through. Tasks 16-21 add each remaining stage's rejections back, one task at
+ * through. Tasks 17-21 add each remaining stage's rejections back, one task at
  * a time, and tighten this file as they go.
  */
 
@@ -68,9 +68,8 @@ describe("Delhi NCR morning pool", () => {
     // Stages leave this list as they are implemented, and pick up their own
     // assertions above. Gone so far: operationalState, h3RouteCorridor,
     // pickupRouteDistance, directionCompatibility, stopSequenceGeneration,
-    // pickupTimeWindow.
+    // pickupTimeWindow, detourLowerBound.
     for (const stageId of [
-      "detourLowerBound",
       "roadRouting",
       "incrementalCost",
       "hardConstraints",

@@ -51,6 +51,9 @@ export interface DriverMetrics {
   enumeratedSequences?: number;
   capacityFeasibleSequences?: number;
   timeWindowFeasibleSequences?: number;
+  lowerBoundAdditionalKm?: number;
+  boundFeasibleSequences?: number;
+  shortlistedSequences?: number;
 
   // Capacity
   totalSeats?: number;

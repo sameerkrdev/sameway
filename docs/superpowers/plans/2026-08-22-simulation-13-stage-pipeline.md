@@ -5054,7 +5054,7 @@ git commit -m "feat(simulation): stage 6 per-passenger pickup time windows"
 
 ---
 
-## Task 16: Stage 7 — Detour lower bound
+## Task 16: Stage 7 — Detour lower bound — LANDED
 
 **Files:**
 - Modify: `src/matching/stages/detourLowerBound.ts`
@@ -5064,7 +5064,7 @@ git commit -m "feat(simulation): stage 6 per-passenger pickup time windows"
 - Consumes: `context.getSequences`, `context.getCorridor`; `pathLengthKm` from `@/lib/geo`; settings `maxAdditionalDistanceKm`, `maxRoutedInsertionsPerDriver`.
 - Produces: `DriverMetrics.lowerBoundAdditionalKm?`, `boundFeasibleSequences?`, `shortlistedSequences?`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/test/detourLowerBound.test.ts`:
 
@@ -5156,12 +5156,12 @@ describe("detourLowerBound", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `bun run test src/test/detourLowerBound.test.ts`
 Expected: FAIL — no-op stage.
 
-- [ ] **Step 3: Implement the stage**
+- [x] **Step 3: Implement the stage**
 
 Replace `src/matching/stages/detourLowerBound.ts`:
 
@@ -5293,12 +5293,12 @@ Add to `DriverMetrics`:
   shortlistedSequences?: number;
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `bun run test src/test/detourLowerBound.test.ts`
 Expected: PASS, all five cases.
 
-- [ ] **Step 5: Add the admissibility regression**
+- [x] **Step 5: Add the admissibility regression**
 
 Append to `src/test/detourLowerBound.test.ts`:
 
@@ -5318,7 +5318,7 @@ it("never prunes a candidate whose real added distance is within the cap", async
 Run: `bun run test src/test/detourLowerBound.test.ts`
 Expected: PASS, six cases.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/matching src/test/detourLowerBound.test.ts
