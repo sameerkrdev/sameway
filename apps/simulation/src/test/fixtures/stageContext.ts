@@ -9,6 +9,7 @@ import type {
 } from "@/domain/entities";
 import { DEFAULT_SETTINGS } from "@/domain/settings";
 import type { RideCorridor } from "@/matching/corridor";
+import type { StopDelayBudget } from "@/matching/stages/operationalState";
 import type {
   DriverMetrics,
   MatchingContext,
@@ -150,6 +151,7 @@ export function makeContext(input: MakeContextInput): MatchingContext & {
   const metrics = new Map<string, DriverMetrics>();
   const corridors = new Map<string, RideCorridor>();
   const sequences = new Map<string, RouteInsertionCandidate[]>();
+  const delayBudgets = new Map<string, StopDelayBudget[]>();
   const insertions = new Map<string, RouteInsertionResult>();
   const scores = new Map<string, ScoreBreakdown>();
 
@@ -174,6 +176,10 @@ export function makeContext(input: MakeContextInput): MatchingContext & {
     getSequences: (id) => sequences.get(id) ?? [],
     setSequences: (id, candidates) => {
       sequences.set(id, candidates);
+    },
+    getDelayBudgets: (id) => delayBudgets.get(id) ?? [],
+    setDelayBudgets: (id, budgets) => {
+      delayBudgets.set(id, budgets);
     },
     recordMetrics: (id, patch) => {
       metrics.set(id, { ...(metrics.get(id) ?? {}), ...patch });

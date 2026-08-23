@@ -4752,7 +4752,7 @@ git commit -m "feat(simulation): stage 5 legal stop sequence enumeration"
 
 ---
 
-## Task 15: Stage 6 — Flexible pickup time window
+## Task 15: Stage 6 — Flexible pickup time window — LANDED
 
 **Files:**
 - Modify: `src/matching/stages/pickupTimeWindow.ts`
@@ -4762,7 +4762,7 @@ git commit -m "feat(simulation): stage 5 legal stop sequence enumeration"
 - Consumes: `context.getSequences` (Task 14); `budgetsByDriver` note from stage 1 (Task 10) — read via a new `context.getDelayBudgets(driverId)` accessor added here; `haversineKm`; `settings.estimatedSpeedKmh` (new).
 - Produces: `MatchingContext.getDelayBudgets(driverId): StopDelayBudget[]` and `setDelayBudgets(driverId, budgets)`; `DriverMetrics.timeWindowFeasibleSequences?`.
 
-- [ ] **Step 1: Publish the budgets through the context**
+- [x] **Step 1: Publish the budgets through the context**
 
 Stage 1 currently returns budgets in `notes`, which the UI reads but stages cannot. Add storage exactly like the corridor and sequence maps:
 
@@ -4788,7 +4788,7 @@ Add to `MatchingSettings`, `DEFAULT_SETTINGS` and `matchingSettingsSchema`:
 
 with a default of `24` and a schema of `z.number().min(1)`.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Create `src/test/pickupTimeWindow.test.ts`:
 
@@ -4876,12 +4876,12 @@ describe("pickupTimeWindow", () => {
 });
 ```
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [x] **Step 3: Run the test to verify it fails**
 
 Run: `bun run test src/test/pickupTimeWindow.test.ts`
 Expected: FAIL — no-op stage narrows nothing.
 
-- [ ] **Step 4: Implement the stage**
+- [x] **Step 4: Implement the stage**
 
 Replace `src/matching/stages/pickupTimeWindow.ts`:
 
@@ -5040,12 +5040,12 @@ Add to `DriverMetrics`:
   timeWindowFeasibleSequences?: number;
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `bun run test src/test/pickupTimeWindow.test.ts`
 Expected: PASS, all five cases.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/matching src/domain src/test

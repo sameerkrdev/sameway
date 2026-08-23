@@ -126,6 +126,7 @@ export const matchingSettingsSchema = z.object({
   maxPickupToRouteDistanceKm: z.number().min(0),
   maxDropToRouteDistanceKm: z.number().min(0),
   maxBearingDifferenceDeg: z.number().min(0).max(180),
+  estimatedSpeedKmh: z.number().min(1),
   maxDetourPercent: z.number().min(0),
   maxAdditionalDistanceKm: z.number().min(0),
   maxAdditionalDurationMin: z.number().min(0),

@@ -8,12 +8,13 @@ import { evaluationFor, failureCodes, runFixture, stageStatus } from "./fixtures
 /**
  * One scenario that walks the pipeline end to end.
  *
- * Stages 0 through 4 are implemented; the seven after them are still no-op
+ * Stages 0 through 6 are implemented; the five after them are still no-op
  * placeholders. The assertions below pin both halves: what the implemented
  * filters decide, and the fact that every unimplemented stage passes everyone
- * through. Tasks 14-21 add each remaining stage's rejections back, one task at
+ * through. Tasks 16-21 add each remaining stage's rejections back, one task at
  * a time, and tighten this file as they go.
  */
+
 describe("Delhi NCR morning pool", () => {
   let result: MatchingResult;
 
@@ -30,7 +31,6 @@ describe("Delhi NCR morning pool", () => {
     // The rest survive a pipeline whose remaining filters are not implemented
     // yet.
     expect(result.ranked.map((entry) => entry.driverId)).toEqual(["D001", "D007"]);
-
     const winner = evaluationFor(result, "D001");
     expect(winner.finalStatus).toBe("PASSED");
     expect(winner.rank).toBe(1);
@@ -67,10 +67,9 @@ describe("Delhi NCR morning pool", () => {
     // Placeholder stages must be transparent, not silently rejecting.
     // Stages leave this list as they are implemented, and pick up their own
     // assertions above. Gone so far: operationalState, h3RouteCorridor,
-    // pickupRouteDistance, directionCompatibility.
+    // pickupRouteDistance, directionCompatibility, stopSequenceGeneration,
+    // pickupTimeWindow.
     for (const stageId of [
-      "stopSequenceGeneration",
-      "pickupTimeWindow",
       "detourLowerBound",
       "roadRouting",
       "incrementalCost",
@@ -88,7 +87,6 @@ describe("Delhi NCR morning pool", () => {
       id: stage.stageId,
       out: stage.outputCount,
     }));
-
     expect(counts).toEqual([
       { id: "requestValidation", out: 8 },
       { id: "basicEligibility", out: 5 },
@@ -105,7 +103,6 @@ describe("Delhi NCR morning pool", () => {
       { id: "scoring", out: 2 },
       { id: "commit", out: 2 },
     ]);
-
     // Candidates now come from the corridor stage rather than H3 ring growth.
     expect(result.summary.candidates).toBe(4);
     expect(result.summary.passed).toBe(2);
@@ -130,7 +127,6 @@ describe("Delhi NCR morning pool", () => {
     // Stage 2's cells are coarse and padded; stage 3 is the exact measurement
     // that overrules them.
     expect(failureCodes(result, "D005")).toEqual(["PICKUP_TOO_FAR_FROM_ROUTE"]);
-
     const evaluation = evaluationFor(result, "D005");
     expect(evaluation.failedAtStageId).toBe("pickupRouteDistance");
     expect(evaluation.metrics.pickupToRouteKm).toBeGreaterThan(1.5);
@@ -140,7 +136,6 @@ describe("Delhi NCR morning pool", () => {
     const codes = Object.fromEntries(
       result.summary.rejectionsByCode.map((group) => [group.code, group.count]),
     );
-
     expect(codes).toEqual({
       DRIVER_OFFLINE: 1,
       VEHICLE_TYPE_MISMATCH: 1,

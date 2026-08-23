@@ -12,6 +12,7 @@ import type { RoutingEngine, RoutingTelemetrySnapshot } from "@/routing/types";
 import type { RideCorridor } from "./corridor";
 import { EvaluationLedger } from "./evaluation";
 import { REASONS, reason, type MatchReason, type ReasonCode } from "./reasons";
+import type { StopDelayBudget } from "./stages/operationalState";
 import type {
   DriverEvaluation,
   DriverMetrics,
@@ -56,6 +57,8 @@ export async function runMatching(options: RunMatchingOptions): Promise<Matching
   const corridors = new Map<string, RideCorridor>();
   // Stage 5 publishes candidate orderings here; stages 6, 7 and 8 narrow them.
   const sequences = new Map<string, RouteInsertionCandidate[]>();
+  // Stage 1 prices the ride's existing promises here; stages 6 and 10 enforce them.
+  const delayBudgets = new Map<string, StopDelayBudget[]>();
 
   let liveDriverIds: string[] = [...allDriverIds];
   let requestRejection: MatchReason | undefined;
@@ -79,6 +82,7 @@ export async function runMatching(options: RunMatchingOptions): Promise<Matching
       lookups,
       corridors,
       sequences,
+      delayBudgets,
     });
 
     const outcome = await stage.execute(context);
@@ -215,6 +219,7 @@ function createContext(input: {
   lookups: ScenarioLookups;
   corridors: Map<string, RideCorridor>;
   sequences: Map<string, RouteInsertionCandidate[]>;
+  delayBudgets: Map<string, StopDelayBudget[]>;
 }): MatchingContext {
   const { scenario, request, settings, routing, liveDriverIds, ledger, lookups } = input;
 
@@ -237,6 +242,11 @@ function createContext(input: {
     getCorridor: (driverId: string): RideCorridor | undefined => input.corridors.get(driverId),
     getSequences: (driverId: string): RouteInsertionCandidate[] =>
       input.sequences.get(driverId) ?? [],
+    getDelayBudgets: (driverId: string): StopDelayBudget[] =>
+      input.delayBudgets.get(driverId) ?? [],
+    setDelayBudgets: (driverId: string, budgets: StopDelayBudget[]): void => {
+      input.delayBudgets.set(driverId, budgets);
+    },
     setSequences: (driverId: string, candidates: RouteInsertionCandidate[]): void => {
       input.sequences.set(driverId, candidates);
     },

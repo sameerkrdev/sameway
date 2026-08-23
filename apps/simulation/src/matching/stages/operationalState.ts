@@ -65,6 +65,9 @@ export const operationalStateStage: MatchingStage = {
       }
 
       budgetsByDriver[driverId] = budgets;
+      // The note is for the UI; the context channel is for stages 6 and 10,
+      // which cannot reach another stage's notes.
+      context.setDelayBudgets(driverId, budgets);
 
       const tightest = budgets.reduce<number | undefined>(
         (min, budget) => (min === undefined ? budget.budgetMin : Math.min(min, budget.budgetMin)),

@@ -35,6 +35,9 @@ export const DEFAULT_SETTINGS: MatchingSettings = {
   maxDropToRouteDistanceKm: 3,
   maxBearingDifferenceDeg: 75,
 
+  // Straight-line ETA estimation for the stage 6 pre-filter only.
+  estimatedSpeedKmh: 24,
+
   maxDetourPercent: 15,
   maxAdditionalDistanceKm: 5,
   maxAdditionalDurationMin: 12,

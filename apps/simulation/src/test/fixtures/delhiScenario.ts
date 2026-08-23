@@ -10,10 +10,15 @@ import type {
   Vehicle,
 } from "@/domain/entities";
 import { DEFAULT_PASSENGER_DELAY_BUDGETS, DEFAULT_SETTINGS } from "@/domain/settings";
-import { offsetBy } from "@/lib/geo";
+import { haversineKm, offsetBy } from "@/lib/geo";
 
 export const CONNAUGHT_PLACE: LatLng = { lat: 28.6315, lng: 77.2167 };
 export const NOIDA_SECTOR_62: LatLng = { lat: 28.628, lng: 77.3649 };
+
+// Driver positions the committed rides are stamped against.
+const D004_LOCATION: LatLng = offsetBy(CONNAUGHT_PLACE, 0.9, 180);
+const D006_LOCATION: LatLng = offsetBy(CONNAUGHT_PLACE, 0.9, 270);
+const D007_LOCATION: LatLng = offsetBy(CONNAUGHT_PLACE, 1.0, 315);
 
 const CAB: Vehicle = {
   id: "V_CAB",
@@ -78,6 +83,32 @@ function stop(
 }
 
 /**
+ * Stamps each stop with the ETA it would have been promised when the ride was
+ * committed, walking the sequence from the driver at the settings' estimated
+ * speed.
+ *
+ * These cannot all be zero. `originalEtaMin` is the promise stages 6, 9, 10 and
+ * 12 measure delay against, so a stop 14 km away carrying "promised at minute
+ * 0" reads as thirty-five minutes late before anything has been inserted. The
+ * arithmetic here matches stage 6's own projection, which is what makes an
+ * untouched route come out at zero delay — the correct baseline.
+ */
+function stampEtas(driverLocation: LatLng, stops: Stop[]): Stop[] {
+  let cumulativeKm = 0;
+  let previous = driverLocation;
+
+  return stops.map((entry) => {
+    cumulativeKm += haversineKm(previous, entry.location);
+    previous = entry.location;
+
+    return {
+      ...entry,
+      originalEtaMin: (cumulativeKm / DEFAULT_SETTINGS.estimatedSpeedKmh) * 60,
+    };
+  });
+}
+
+/**
  * A hand-built Delhi scenario that deterministically exercises every rejection
  * path plus one clean pass, so the end-to-end test asserts real pipeline
  * behaviour rather than a happy path.
@@ -102,30 +133,30 @@ export function buildDelhiScenario(): Scenario {
     id: "R_FULL",
     driverId: "D004",
     passengerIds: ["P_FULL_A", "P_FULL_B"],
-    stops: [
+    stops: stampEtas(D004_LOCATION, [
       stop("S_FULL_A_DROP", "R_FULL", "P_FULL_A", "DROP", offsetBy(CONNAUGHT_PLACE, 3, 60), 0),
       stop("S_FULL_B_DROP", "R_FULL", "P_FULL_B", "DROP", offsetBy(CONNAUGHT_PLACE, 5, 60), 1),
-    ],
+    ]),
   };
 
   const westRide: Ride = {
     id: "R_WEST",
     driverId: "D006",
     passengerIds: ["P_WEST"],
-    stops: [
+    stops: stampEtas(D006_LOCATION, [
       stop("S_WEST_PICKUP", "R_WEST", "P_WEST", "PICKUP", offsetBy(CONNAUGHT_PLACE, 1.5, 270), 0),
       stop("S_WEST_DROP", "R_WEST", "P_WEST", "DROP", offsetBy(CONNAUGHT_PLACE, 3, 270), 1),
-    ],
+    ]),
   };
 
   const soloRide: Ride = {
     id: "R_SOLO",
     driverId: "D007",
     passengerIds: ["P_SOLO"],
-    stops: [
+    stops: stampEtas(D007_LOCATION, [
       stop("S_SOLO_PICKUP", "R_SOLO", "P_SOLO", "PICKUP", offsetBy(CONNAUGHT_PLACE, 0.4, 90), 0),
       stop("S_SOLO_DROP", "R_SOLO", "P_SOLO", "DROP", offsetBy(CONNAUGHT_PLACE, 14, 90), 1),
-    ],
+    ]),
   };
 
   const drivers: Driver[] = [

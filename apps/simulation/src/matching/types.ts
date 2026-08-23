@@ -12,6 +12,7 @@ import type { RoutingEngine, RoutingTelemetrySnapshot } from "@/routing/types";
 
 import type { RideCorridor } from "./corridor";
 import type { MatchReason, ReasonCategory, ReasonCode } from "./reasons";
+import type { StopDelayBudget } from "./stages/operationalState";
 
 export type EvaluationStatus = "PASSED" | "FAILED" | "NOT_EVALUATED";
 
@@ -49,6 +50,7 @@ export interface DriverMetrics {
   // Sequence generation
   enumeratedSequences?: number;
   capacityFeasibleSequences?: number;
+  timeWindowFeasibleSequences?: number;
 
   // Capacity
   totalSeats?: number;
@@ -284,6 +286,10 @@ export interface MatchingContext {
   /** Candidate orderings published by stage 5 and narrowed by stages 6 and 7. */
   getSequences(driverId: string): RouteInsertionCandidate[];
   setSequences(driverId: string, candidates: RouteInsertionCandidate[]): void;
+
+  /** Per-stop delay budgets published by stage 1 and enforced by stages 6 and 10. */
+  getDelayBudgets(driverId: string): StopDelayBudget[];
+  setDelayBudgets(driverId: string, budgets: StopDelayBudget[]): void;
 
   /** Merges into the driver's accumulated metrics. */
   recordMetrics(driverId: string, metrics: DriverMetrics): void;

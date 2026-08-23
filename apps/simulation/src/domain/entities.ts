@@ -180,6 +180,12 @@ export interface MatchingSettings {
   maxDropToRouteDistanceKm: number;
   maxBearingDifferenceDeg: number;
 
+  /**
+   * Average road speed used only for stage 6's straight-line ETA pre-filter.
+   * Never used for a reported ETA — those all come from stage 8.
+   */
+  estimatedSpeedKmh: number;
+
   // Route feasibility.
   maxDetourPercent: number;
   maxAdditionalDistanceKm: number;
