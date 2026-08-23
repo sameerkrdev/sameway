@@ -8,10 +8,10 @@ import { evaluationFor, failureCodes, runFixture, stageStatus } from "./fixtures
 /**
  * One scenario that walks the pipeline end to end.
  *
- * Stages 0 through 3 are implemented; the eight after them are still no-op
+ * Stages 0 through 4 are implemented; the seven after them are still no-op
  * placeholders. The assertions below pin both halves: what the implemented
  * filters decide, and the fact that every unimplemented stage passes everyone
- * through. Tasks 13-21 add each remaining stage's rejections back, one task at
+ * through. Tasks 14-21 add each remaining stage's rejections back, one task at
  * a time, and tighten this file as they go.
  */
 describe("Delhi NCR morning pool", () => {
@@ -22,13 +22,14 @@ describe("Delhi NCR morning pool", () => {
     result = await runFixture(scenario, delhiRequest(scenario));
   });
 
-  it("ranks every driver that clears eligibility and corridor proximity", () => {
+  it("ranks every driver that clears eligibility, corridor and direction", () => {
     // D002, D003 and D004 fail stage 0. D008 clears stage 0 but is idle 10 km
     // out, so its single-point corridor never reaches the pickup. D005 is idle
     // 2.5 km out: near enough for the ring search, too far once stage 3
-    // measures it. The rest survive a pipeline whose remaining filters are not
-    // implemented yet.
-    expect(result.ranked.map((entry) => entry.driverId)).toEqual(["D001", "D006", "D007"]);
+    // measures it. D006 is on the westbound ride and the request heads east.
+    // The rest survive a pipeline whose remaining filters are not implemented
+    // yet.
+    expect(result.ranked.map((entry) => entry.driverId)).toEqual(["D001", "D007"]);
 
     const winner = evaluationFor(result, "D001");
     expect(winner.finalStatus).toBe("PASSED");
@@ -66,9 +67,8 @@ describe("Delhi NCR morning pool", () => {
     // Placeholder stages must be transparent, not silently rejecting.
     // Stages leave this list as they are implemented, and pick up their own
     // assertions above. Gone so far: operationalState, h3RouteCorridor,
-    // pickupRouteDistance.
+    // pickupRouteDistance, directionCompatibility.
     for (const stageId of [
-      "directionCompatibility",
       "stopSequenceGeneration",
       "pickupTimeWindow",
       "detourLowerBound",
@@ -95,21 +95,28 @@ describe("Delhi NCR morning pool", () => {
       { id: "operationalState", out: 5 },
       { id: "h3RouteCorridor", out: 4 },
       { id: "pickupRouteDistance", out: 3 },
-      { id: "directionCompatibility", out: 3 },
-      { id: "stopSequenceGeneration", out: 3 },
-      { id: "pickupTimeWindow", out: 3 },
-      { id: "detourLowerBound", out: 3 },
-      { id: "roadRouting", out: 3 },
-      { id: "incrementalCost", out: 3 },
-      { id: "hardConstraints", out: 3 },
-      { id: "scoring", out: 3 },
-      { id: "commit", out: 3 },
+      { id: "directionCompatibility", out: 2 },
+      { id: "stopSequenceGeneration", out: 2 },
+      { id: "pickupTimeWindow", out: 2 },
+      { id: "detourLowerBound", out: 2 },
+      { id: "roadRouting", out: 2 },
+      { id: "incrementalCost", out: 2 },
+      { id: "hardConstraints", out: 2 },
+      { id: "scoring", out: 2 },
+      { id: "commit", out: 2 },
     ]);
 
     // Candidates now come from the corridor stage rather than H3 ring growth.
     expect(result.summary.candidates).toBe(4);
-    expect(result.summary.passed).toBe(3);
-    expect(result.summary.rejected).toBe(5);
+    expect(result.summary.passed).toBe(2);
+    expect(result.summary.rejected).toBe(6);
+  });
+
+  it("rejects a ride heading the other way", () => {
+    // D006 runs the westbound ride; the request is Connaught Place to Noida.
+    // The pickup is near its corridor — the destination is what disqualifies it.
+    expect(failureCodes(result, "D006")).toEqual(["BEARING_INCOMPATIBLE"]);
+    expect(evaluationFor(result, "D006").failedAtStageId).toBe("directionCompatibility");
   });
 
   it("rejects a driver whose corridor never reaches the pickup", () => {
@@ -140,6 +147,7 @@ describe("Delhi NCR morning pool", () => {
       INSUFFICIENT_CAPACITY: 1,
       CORRIDOR_NO_MATCH: 1,
       PICKUP_TOO_FAR_FROM_ROUTE: 1,
+      BEARING_INCOMPATIBLE: 1,
     });
   });
 

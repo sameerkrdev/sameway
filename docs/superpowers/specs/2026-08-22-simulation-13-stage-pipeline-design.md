@@ -218,8 +218,10 @@ Three cheap geometric signals, all free:
 2. **Destination-to-route distance**, same point-to-polyline routine as stage 3,
    against `maxDropToRouteDistanceKm`.
 3. **Destination route progress** — the destination's projected position along
-   the remaining route must be ahead of the vehicle's current progress. A
-   destination behind the vehicle rejects regardless of proximity.
+   the remaining route must be ahead of the pickup's. The corridor polyline
+   starts at the vehicle, so comparing against the vehicle's own progress is
+   trivially true; the pickup is the reference that actually discriminates. A
+   destination behind it rejects regardless of proximity.
 
 Distinct reason codes per signal, so the dashboard distinguishes "wrong
 direction" from "destination too far off corridor" from "destination behind".

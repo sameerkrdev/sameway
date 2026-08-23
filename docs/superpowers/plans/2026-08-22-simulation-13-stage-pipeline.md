@@ -4153,7 +4153,7 @@ git commit -m "feat(simulation): stage 3 pickup-to-route proximity"
 
 ---
 
-## Task 13: Stage 4 — Direction and destination compatibility
+## Task 13: Stage 4 — Direction and destination compatibility — LANDED
 
 **Files:**
 - Modify: `src/matching/stages/directionCompatibility.ts`
@@ -4164,7 +4164,7 @@ git commit -m "feat(simulation): stage 3 pickup-to-route proximity"
 - Consumes: `context.getCorridor` (Task 11); `polylineBearingDeg`, `pointToPolylineKm`, `projectOnPolylineKm`, `bearingDeg`, `bearingDifferenceDeg`; settings `maxBearingDifferenceDeg`, `maxDropToRouteDistanceKm`.
 - Produces: `DriverMetrics.bearingDifferenceDeg?`, `dropToRouteKm?`, `dropProgressKm?`, `vehicleProgressKm?`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/test/directionCompatibility.test.ts`:
 
@@ -4263,12 +4263,12 @@ describe("directionCompatibility", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `bun run test src/test/directionCompatibility.test.ts`
 Expected: FAIL — no-op stage.
 
-- [ ] **Step 3: Implement the stage**
+- [x] **Step 3: Implement the stage**
 
 Replace `src/matching/stages/directionCompatibility.ts`:
 
@@ -4432,12 +4432,12 @@ Add to `DriverMetrics`:
   pickupProgressKm?: number;
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `bun run test src/test/directionCompatibility.test.ts`
 Expected: PASS, all six cases.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/matching src/test/directionCompatibility.test.ts

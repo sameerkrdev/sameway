@@ -36,6 +36,12 @@ export interface DriverMetrics {
   roadDistanceKm?: number;
   roadEtaMin?: number;
 
+  // Direction compatibility
+  bearingDifferenceDeg?: number;
+  dropToRouteKm?: number;
+  dropProgressKm?: number;
+  pickupProgressKm?: number;
+
   // Operational state
   flexibleStopCount?: number;
   tightestDelayBudgetMin?: number;
