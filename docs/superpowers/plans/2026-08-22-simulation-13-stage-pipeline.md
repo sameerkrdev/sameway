@@ -12,20 +12,24 @@
 
 ## Status — as of 2026-08-23
 
-**Tasks 1–9: landed.** Schema v2 and its v1 migrator, the stage-3/4 geometry
-primitives, the H3 remaining-route corridor index, the whole `src/optimization/`
-module (types, `ShipmentModelBuilder`, `SolutionReader`, engine, telemetry,
-cache, budget), the ADC dev-server proxy, and the fourteen-stage skeleton.
-Verified green at `8c6342a`: typecheck clean, lint clean, 108 tests in 15 files.
+**All 24 tasks landed.** Every stage of `docs/Overview.md` now runs. Verified
+green: typecheck clean, lint clean, 194 tests in 29 files, production build
+clean. The suite is offline — `StubOptimizerEngine` stands in for the solver —
+so none of the Google setup is needed to run it.
 
-**Tasks 10–24: not started.** Eleven of the fourteen stages are still the
-no-op placeholders Task 9 deliberately shipped — they pass every live driver.
-Only `requestValidation`, `basicEligibility` and `scoring` carry real logic, and
-`scoring` still normalises against Task 9's stand-in thresholds.
+Commit `3051b2a` previously deleted this document with the same claim, at the
+end of Task 9 rather than Task 24: eleven of the fourteen stages were still the
+no-op placeholders Task 9 deliberately shipped. The document was restored and
+Tasks 10–24 were then implemented.
 
-Commit `3051b2a` deleted this document with the message "All 24 tasks landed".
-That was wrong: it retired the plan at the end of Task 9, not Task 24. The
-document is restored here because Tasks 10–24 are still the work in front of us.
+**Open, and deliberately not decided here:** `lockedVisits` maps to
+`RELAX_ALL_AFTER_THRESHOLD`, pinning committed stops to the head of the route
+rather than merely preserving their order among themselves. The new rider can
+therefore only ever be appended after every committed stop, which makes the
+commonest pooling case unreachable and holds the existing-rider term of the
+fairness score at zero. That is a product decision about how much freedom the
+solver gets over promises already made. Documented in `ShipmentModelBuilder`,
+pinned by `incrementalCost.test.ts`, and listed in the README's known limits.
 
 ---
 
@@ -57,7 +61,7 @@ document is restored here because Tasks 10–24 are still the work in front of u
 - Consumes: nothing.
 - Produces: `Passenger.maxPickupDelayMin: number`, `Passenger.maxDropDelayMin: number`, `Stop.originalEtaMin: number`, `SCENARIO_SCHEMA_VERSION = 2`, and a private `migrateToV2(input: unknown): unknown` called from inside `parseScenario` — migration runs before validation, so it is not a separate exported entry point.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/test/schema-migration.test.ts`:
 
@@ -182,12 +186,12 @@ describe("scenario schema v2", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `bun run test src/test/schema-migration.test.ts`
 Expected: FAIL — `schemaVersion` is still `1` and `maxPickupDelayMin` does not exist.
 
-- [ ] **Step 3: Add the new fields to the domain model**
+- [x] **Step 3: Add the new fields to the domain model**
 
 In `src/domain/entities.ts`, extend `Passenger`:
 
@@ -239,7 +243,7 @@ export const SCENARIO_SCHEMA_VERSION = 2 as const;
 
 and `Scenario.schemaVersion` to `2`.
 
-- [ ] **Step 4: Add the migrator**
+- [x] **Step 4: Add the migrator**
 
 In `src/domain/schemas.ts`, add the two passenger fields and the stop field to `passengerSchema` / `stopSchema`:
 
@@ -354,7 +358,7 @@ export function parseScenario(input: unknown): ScenarioParseResult {
   const result = scenarioSchema.safeParse(migrateToV2(input));
 ```
 
-- [ ] **Step 5: Update the scenario builders**
+- [x] **Step 5: Update the scenario builders**
 
 In `src/scenarios/builders.ts`, every helper that constructs a `Passenger` must set `maxPickupDelayMin: 6` and `maxDropDelayMin: 8`, and every helper that constructs a `Stop` must set `originalEtaMin: 0`. Find them with:
 
@@ -362,12 +366,12 @@ Run: `grep -n "seatsRequired\|sequence:" src/scenarios/builders.ts`
 
 Add the fields to each literal. Do the same in `src/scenarios/randomGenerator.ts` and in any preset in `src/scenarios/presets/` that builds passengers or stops without going through a builder.
 
-- [ ] **Step 6: Run the whole suite**
+- [x] **Step 6: Run the whole suite**
 
 Run: `bun run check-types && bun run test`
 Expected: `schema-migration.test.ts` PASSES. Other suites pass; fix any test fixture that constructs a `Passenger` or `Stop` literal by adding the new fields.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/domain src/scenarios src/test
@@ -389,7 +393,7 @@ git commit -m "feat(simulation): scenario schema v2 with per-passenger delay bud
   - `projectOnPolylineKm(point: LatLng, polyline: readonly LatLng[]): number` — distance **along** the polyline of the nearest point, in km from its start.
   - `polylineBearingDeg(polyline: readonly LatLng[]): number | null` — start-to-end bearing, `null` for fewer than two points.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/test/geo-polyline.test.ts`:
 
@@ -460,12 +464,12 @@ describe("polylineBearingDeg", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `bun run test src/test/geo-polyline.test.ts`
 Expected: FAIL — `pointToPolylineKm is not a function`.
 
-- [ ] **Step 3: Implement the primitives**
+- [x] **Step 3: Implement the primitives**
 
 Append to `src/lib/geo.ts`:
 
@@ -582,12 +586,12 @@ export function polylineBearingDeg(polyline: readonly LatLng[]): number | null {
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `bun run test src/test/geo-polyline.test.ts`
 Expected: PASS, all eight cases.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/geo.ts src/test/geo-polyline.test.ts
@@ -613,7 +617,7 @@ git commit -m "feat(simulation): point-to-polyline geometry for corridor stages"
     - `buildCorridors(input: BuildCorridorsInput): Map<string, RideCorridor>` keyed by driver id
     - `indexCorridorsByCell(corridors: ReadonlyMap<string, RideCorridor>): Map<H3Index, string[]>` — cell to driver ids
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/test/corridor.test.ts`:
 
@@ -770,12 +774,12 @@ describe("indexCorridorsByCell", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `bun run test src/test/corridor.test.ts`
 Expected: FAIL — `Cannot find module '@/matching/corridor'`.
 
-- [ ] **Step 3: Add the H3 helpers**
+- [x] **Step 3: Add the H3 helpers**
 
 Append to `src/lib/h3.ts`:
 
@@ -843,7 +847,7 @@ function edgeLengthKm(resolution: number): number {
 
 (Keep the existing imports; add to them rather than replacing.)
 
-- [ ] **Step 4: Write the corridor module**
+- [x] **Step 4: Write the corridor module**
 
 Create `src/matching/corridor.ts`:
 
@@ -956,17 +960,17 @@ export function cellForPoint(point: LatLng, resolution: number): H3Index {
 }
 ```
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run: `bun run test src/test/corridor.test.ts`
 Expected: PASS, all six cases. If "covers a point ahead" fails, the sampling step in `cellsForPath` is too coarse — halve `stepKm`.
 
-- [ ] **Step 6: Run the whole suite and lint**
+- [x] **Step 6: Run the whole suite and lint**
 
 Run: `bun run check-types && bun run lint && bun run test`
 Expected: all green. The `no-restricted-imports` rule must not fire — `gridDisk` is imported inside `src/lib/h3.ts`, which is the allowed file.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/lib/h3.ts src/matching/corridor.ts src/test/corridor.test.ts
@@ -986,7 +990,7 @@ git commit -m "feat(simulation): H3 remaining-route corridor index"
 - Consumes: `LatLng` from `@/domain/entities`; `RouteLegResult` from `@/routing/types`.
 - Produces: `OptimizerEngine`, `OptimizeToursRequest`, `OptimizeToursResult`, `OptimizerShipment`, `OptimizerVisit`, `OptimizerUnavailableError`, `OptimizerBudgetExceededError`, `OptimizerCredentialsMissingError`.
 
-- [ ] **Step 1: Write the types**
+- [x] **Step 1: Write the types**
 
 Create `src/optimization/types.ts`:
 
@@ -1113,7 +1117,7 @@ export class OptimizerBudgetExceededError extends Error {
 }
 ```
 
-- [ ] **Step 2: Create the barrel**
+- [x] **Step 2: Create the barrel**
 
 Create `src/optimization/index.ts`:
 
@@ -1121,12 +1125,12 @@ Create `src/optimization/index.ts`:
 export * from "./types";
 ```
 
-- [ ] **Step 3: Verify it compiles**
+- [x] **Step 3: Verify it compiles**
 
 Run: `bun run check-types`
 Expected: PASS, no output.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/optimization
@@ -1145,7 +1149,7 @@ git commit -m "feat(simulation): optimizer engine contract"
 - Consumes: `OptimizeToursRequest`, `OptimizerShipment` (Task 4); `ProposedStop` from `@/matching/types`; `Passenger`, `RideRequest`, `LatLng` from `@/domain/entities`.
 - Produces: `buildOptimizeToursRequest(input: BuildShipmentModelInput): OptimizeToursRequest`, and `shipmentIdFor(passengerId: string): string`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/test/shipmentModel.test.ts`:
 
@@ -1268,12 +1272,12 @@ describe("buildOptimizeToursRequest", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `bun run test src/test/shipmentModel.test.ts`
 Expected: FAIL — `Cannot find module '@/optimization/ShipmentModelBuilder'`.
 
-- [ ] **Step 3: Implement the builder**
+- [x] **Step 3: Implement the builder**
 
 Create `src/optimization/ShipmentModelBuilder.ts`:
 
@@ -1416,12 +1420,12 @@ export function buildOptimizeToursRequest(
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `bun run test src/test/shipmentModel.test.ts`
 Expected: PASS, all seven cases.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/optimization/ShipmentModelBuilder.ts src/test/shipmentModel.test.ts
@@ -1440,7 +1444,7 @@ git commit -m "feat(simulation): build OptimizeTours shipment models from commit
 - Consumes: `OptimizeToursRequest`, `OptimizeToursResult`, `OptimizerVisit` (Task 4).
 - Produces: `readOptimizeToursResponse(request: OptimizeToursRequest, body: unknown): OptimizeToursResult`, and `toProposedStopSequence(result: OptimizeToursResult, newPassengerId: string): ProposedStop[]`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/test/solutionReader.test.ts`:
 
@@ -1572,12 +1576,12 @@ describe("toProposedStopSequence", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `bun run test src/test/solutionReader.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement the reader**
+- [x] **Step 3: Implement the reader**
 
 Create `src/optimization/SolutionReader.ts`:
 
@@ -1723,12 +1727,12 @@ export function toProposedStopSequence(
 
 Note: `seats` is filled by the caller in Task 17, which has the passenger records. Leaving it at `0` here keeps this module free of scenario lookups.
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `bun run test src/test/solutionReader.test.ts`
 Expected: PASS, all eight cases.
 
-- [ ] **Step 5: Export from the barrel**
+- [x] **Step 5: Export from the barrel**
 
 In `src/optimization/index.ts`:
 
@@ -1739,7 +1743,7 @@ export type { BuildShipmentModelInput, CommittedStopInput } from "./ShipmentMode
 export { readOptimizeToursResponse, toProposedStopSequence } from "./SolutionReader";
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/optimization src/test/solutionReader.test.ts
@@ -1762,7 +1766,7 @@ git commit -m "feat(simulation): read OptimizeTours solutions into engine types"
 - Consumes: everything from Tasks 4 and 6.
 - Produces: `OptimizeToursEngine` (class), `OptimizerTelemetry` (class, with `snapshot(): OptimizerTelemetrySnapshot`), `OptimizerCache` (class), `InstrumentedOptimizerEngine` (class), `createOptimizerStack(options): OptimizerStack` where `OptimizerStack = { engine: OptimizerEngine; telemetry: OptimizerTelemetry; cache: OptimizerCache }`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/test/optimizerStack.test.ts`:
 
@@ -1875,12 +1879,12 @@ describe("InstrumentedOptimizerEngine", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `bun run test src/test/optimizerStack.test.ts`
 Expected: FAIL — modules not found.
 
-- [ ] **Step 3: Implement telemetry**
+- [x] **Step 3: Implement telemetry**
 
 Create `src/optimization/OptimizerTelemetry.ts`:
 
@@ -1943,7 +1947,7 @@ export class OptimizerTelemetry {
 }
 ```
 
-- [ ] **Step 4: Implement the cache**
+- [x] **Step 4: Implement the cache**
 
 Create `src/optimization/OptimizerCache.ts`:
 
@@ -2008,7 +2012,7 @@ export class OptimizerCache {
 }
 ```
 
-- [ ] **Step 5: Implement the instrumented wrapper**
+- [x] **Step 5: Implement the instrumented wrapper**
 
 Create `src/optimization/InstrumentedOptimizerEngine.ts`:
 
@@ -2063,7 +2067,7 @@ export class InstrumentedOptimizerEngine implements OptimizerEngine {
 }
 ```
 
-- [ ] **Step 6: Implement the HTTP engine**
+- [x] **Step 6: Implement the HTTP engine**
 
 Create `src/optimization/OptimizeToursEngine.ts`:
 
@@ -2134,7 +2138,7 @@ async function safeJson(response: Response): Promise<unknown> {
 }
 ```
 
-- [ ] **Step 7: Add the stack factory and export everything**
+- [x] **Step 7: Add the stack factory and export everything**
 
 Replace `src/optimization/index.ts`:
 
@@ -2189,12 +2193,12 @@ export function createOptimizerStack(options: CreateOptimizerStackOptions): Opti
 
 `maxOptimizerCallsPerRun` and `optimizerTimeoutMs` do not exist on `MatchingSettings` yet — add them now in `src/domain/entities.ts` (`maxOptimizerCallsPerRun: number; optimizerTimeoutMs: number;`), in `DEFAULT_SETTINGS` (`maxOptimizerCallsPerRun: 40, optimizerTimeoutMs: 400`), and in `matchingSettingsSchema` (`maxOptimizerCallsPerRun: z.number().int().min(1), optimizerTimeoutMs: z.number().int().min(50)`).
 
-- [ ] **Step 8: Run the tests**
+- [x] **Step 8: Run the tests**
 
 Run: `bun run check-types && bun run test src/test/optimizerStack.test.ts`
 Expected: PASS, all five cases.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/optimization src/domain src/test/optimizerStack.test.ts
@@ -2216,7 +2220,7 @@ git commit -m "feat(simulation): optimizer stack with cache, budget and telemetr
 - Consumes: the `OptimizeToursRequest` JSON body posted by `OptimizeToursEngine` (Task 7).
 - Produces: `optimizerProxyPlugin(): Plugin` — a Vite plugin registering `POST /api/optimize-tours`.
 
-- [ ] **Step 1: Add the dependency**
+- [x] **Step 1: Add the dependency**
 
 Run from `apps/simulation`:
 
@@ -2224,7 +2228,7 @@ Run from `apps/simulation`:
 bun add -d google-auth-library
 ```
 
-- [ ] **Step 2: Write the proxy**
+- [x] **Step 2: Write the proxy**
 
 Create `apps/simulation/server/optimizerProxy.ts`:
 
@@ -2441,7 +2445,7 @@ export function optimizerProxyPlugin(): Plugin {
 }
 ```
 
-- [ ] **Step 3: Register the plugin**
+- [x] **Step 3: Register the plugin**
 
 Replace `apps/simulation/vite.config.ts`:
 
@@ -2467,7 +2471,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 4: Document the environment variable**
+- [x] **Step 4: Document the environment variable**
 
 Append to `apps/simulation/.env.example`:
 
@@ -2477,7 +2481,7 @@ Append to `apps/simulation/.env.example`:
 GOOGLE_CLOUD_PROJECT=
 ```
 
-- [ ] **Step 5: Verify the proxy responds**
+- [x] **Step 5: Verify the proxy responds**
 
 Run: `bun run dev` in one terminal, then in another:
 
@@ -2490,12 +2494,12 @@ curl -s -X POST http://localhost:3100/api/optimize-tours \
 Expected with no credentials configured: HTTP 503 and a JSON body naming `gcloud auth application-default login`.
 Expected with credentials and `GOOGLE_CLOUD_PROJECT` set: HTTP 200 with a `routes` array.
 
-- [ ] **Step 6: Verify types and lint still pass**
+- [x] **Step 6: Verify types and lint still pass**
 
 Run: `bun run check-types && bun run lint`
 Expected: PASS. `server/` is outside `src/`, so confirm `tsconfig.json`'s `include` covers it; if it does not, add `"server"` to `include`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add server vite.config.ts package.json .env.example
@@ -2535,7 +2539,7 @@ This is the one atomic refactor in the plan. `StageId` changes, so every consume
 - Consumes: `MatchingStage`, `MatchingContext`, `StageOutcome` from `@/matching/types`.
 - Produces: the thirteen `StageId` values listed below, one exported `MatchingStage` const per stage file (`basicEligibilityStage`, `operationalStateStage`, …, `commitStage`), and `STAGE_REGISTRY` covering all fourteen entries (thirteen plus `requestValidation`).
 
-- [ ] **Step 1: Redefine `StageId`**
+- [x] **Step 1: Redefine `StageId`**
 
 In `src/domain/entities.ts`:
 
@@ -2562,7 +2566,7 @@ export type StageId =
   | "commit";
 ```
 
-- [ ] **Step 2: Rewrite the default order and drop the A/B alternative**
+- [x] **Step 2: Rewrite the default order and drop the A/B alternative**
 
 Replace the top of `src/domain/settings.ts`:
 
@@ -2631,7 +2635,7 @@ const stageIdSchema = z.enum([
 ]);
 ```
 
-- [ ] **Step 3: Add the new reason categories and codes**
+- [x] **Step 3: Add the new reason categories and codes**
 
 In `src/matching/reasons.ts`, extend `ReasonCategory`:
 
@@ -2747,7 +2751,7 @@ Delete the three `ETA` codes (`PICKUP_ETA_OK`, `PICKUP_ETA_TOO_HIGH`, `PICKUP_DI
   COMMIT_READY: { category: "ROUTE", label: "Ready to commit", outcome: "PASS" },
 ```
 
-- [ ] **Step 4: Write the merged eligibility stage**
+- [x] **Step 4: Write the merged eligibility stage**
 
 Create `src/matching/stages/basicEligibility.ts`. This is stage 0 — it merges what `driverStatusFilter`, `vehicleFilter` and `capacityPreFilter` did, keeping every one of their reason codes so the rejection dashboard loses no resolution:
 
@@ -2876,7 +2880,7 @@ function firstEligibilityFailure(
 }
 ```
 
-- [ ] **Step 5: Create the eleven remaining stages as no-ops**
+- [x] **Step 5: Create the eleven remaining stages as no-ops**
 
 Each of these files gets filled in by a later task. For now every one passes every live driver. Use this exact template, substituting the id, name, description and reason code from the table below:
 
@@ -2918,7 +2922,7 @@ export const <CONST>: MatchingStage = {
 
 Use a short `<DESCRIPTION>` matching `STAGE_METADATA` below, and any sensible `<PASS_MESSAGE>` — it is replaced when the stage is implemented.
 
-- [ ] **Step 6: Rewrite `STAGE_METADATA`**
+- [x] **Step 6: Rewrite `STAGE_METADATA`**
 
 Replace the whole `STAGE_METADATA` object in `src/matching/pipeline.ts`:
 
@@ -3025,7 +3029,7 @@ export const STAGE_METADATA: Record<StageId, StageMetadata> = {
 };
 ```
 
-- [ ] **Step 7: Rewrite the registry**
+- [x] **Step 7: Rewrite the registry**
 
 Replace `src/matching/stages/index.ts`:
 
@@ -3098,7 +3102,7 @@ git rm src/matching/stages/driverStatusFilter.ts \
 
 `routeInsertion.ts` stays on disk for now — Tasks 14 and 17 dismantle it. It is temporarily unreferenced, which lint will flag as unused exports only if that rule is enabled; if it complains, leave the file and add `// eslint-disable-next-line` where required, or accept the warning until Task 17 deletes it.
 
-- [ ] **Step 8: Fix the candidate counter**
+- [x] **Step 8: Fix the candidate counter**
 
 In `src/matching/engine.ts`, `countCandidates` looks for the old stage id. Change it:
 
@@ -3109,7 +3113,7 @@ function countCandidates(stageResults: readonly StageResult[]): number {
 }
 ```
 
-- [ ] **Step 9: Update the existing tests**
+- [x] **Step 9: Update the existing tests**
 
 `src/test/pipeline.test.ts` and `src/test/e2e-scenario.test.ts` reference the old stage ids and the removed `BRIEF_STAGE_ORDER`. Update every reference:
 
@@ -3147,12 +3151,12 @@ it("runs all fourteen stages in the Overview's order", async () => {
 });
 ```
 
-- [ ] **Step 10: Run everything**
+- [x] **Step 10: Run everything**
 
 Run: `bun run check-types && bun run lint && bun run test`
 Expected: PASS. Some UI files will fail typechecking because they reference removed `StageId` values or `maxPickupEtaMin`; fix them minimally here (Task 22 does the real UI work) — usually deleting a hard-coded stage list or swapping a settings field name.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add -A src
@@ -7535,13 +7539,13 @@ git commit -m "test(simulation): re-tune presets for corridor indexing, add behi
 
 ---
 
-## Task 24: Documentation
+## Task 24: Documentation — LANDED
 
 **Files:**
 - Modify: `apps/simulation/README.md`
 - Modify: `apps/simulation/.env.example`
 
-- [ ] **Step 1: Rewrite the pipeline section**
+- [x] **Step 1: Rewrite the pipeline section**
 
 Replace the nine-stage list with the fourteen, and rewrite these sections to match what was built:
 
@@ -7551,7 +7555,7 @@ Replace the nine-stage list with the fourteen, and rewrite these sections to mat
 - **How to add a new filter or stage** — update for the new registry, `STAGE_METADATA`, and `DEFAULT_STAGE_ORDER`; note that `stageOrder` is no longer freely reorderable.
 - **Known limits** — add: stage 11 ranks across drivers not sequences; the optimizer proxy is dev-server only; commit concurrency is unsolved.
 
-- [ ] **Step 2: Add the Route Optimization setup section**
+- [x] **Step 2: Add the Route Optimization setup section**
 
 Insert after the existing "Google Maps API setup" section:
 
@@ -7589,12 +7593,12 @@ per-driver failures. A run with no solver has no opinion about any driver, and
 saying otherwise would be a lie.
 ````
 
-- [ ] **Step 3: Verify the documented commands actually work**
+- [x] **Step 3: Verify the documented commands actually work**
 
 Run each command block in the README from a clean checkout: `bun install`, `bun run dev`, `bun run test`, `bun run check-types`, `bun run lint`, `bun run build`.
 Expected: each behaves as documented. Fix the README where it does not.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add README.md .env.example

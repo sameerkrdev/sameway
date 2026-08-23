@@ -58,6 +58,42 @@ their replacements: `google.maps.routes.Route.computeRoutes`,
 A Map ID is required because driver and stop markers use `AdvancedMarker`, which
 only renders on cloud-styled maps.
 
+## Route Optimization setup
+
+Stage 8 sends each candidate driver to Google's `OptimizeTours`. That API is
+server-side only — it needs OAuth2 credentials and does not support browser
+CORS — so the dev server proxies it at `POST /api/optimize-tours`.
+
+Authenticate once with Application Default Credentials:
+
+```bash
+gcloud auth application-default login
+```
+
+and set the project in `apps/simulation/.env.local`:
+
+```
+GOOGLE_CLOUD_PROJECT=your-project-id
+```
+
+Enable the **Route Optimization API** on that project.
+
+No key material is ever committed or sent to the browser: the proxy signs each
+request server-side and forwards only the solution.
+
+**This works under `bun run dev` only.** `bun run build` produces static files
+with no server behind them, so a built bundle cannot reach the optimizer and
+the app shows the unavailable banner. That is deliberate — this is a lab tool,
+not something anyone deploys.
+
+Without credentials, **Run matching** refuses to start rather than reporting
+per-driver failures. A run with no solver has no opinion about any driver, and
+saying otherwise would be a lie.
+
+The test suite never needs any of this: `src/test/fixtures/stubOptimizer.ts`
+stands in for the solver and honours the same contract, so `bun run test` is
+offline and deterministic.
+
 ## H3 setup
 
 H3 needs no configuration; `h3-js` is a dependency. Resolution, ring limit and
@@ -79,7 +115,7 @@ distance or an ETA. The four proximity measures stay distinct throughout:
 
 The left sidebar builds the world:
 
-1. **Scenario** — load one of eleven presets, generate a seeded random scenario,
+1. **Scenario** — load one of twelve presets, generate a seeded random scenario,
    or import a previously exported JSON file.
 2. **Drivers** — add drivers, set status and vehicle, and click **Place** to
    drop them on the map. Markers are also draggable in normal mode.
@@ -109,82 +145,117 @@ the scenario, request and settings alongside the result.
 
 ## The matching pipeline
 
+Fourteen stages, in the order `docs/Overview.md` numbers them. The number in
+brackets is the Overview's; `requestValidation` is a pre-stage that judges the
+request alone, before any driver is considered, so it has none.
+
 ```
-Request validation
-  → H3 candidate generation
-  → Driver status
-  → Vehicle compatibility
-  → Capacity pre-filter
-  → Pickup ETA          (one route-matrix call)
-  → Route feasibility   (full routes, authoritative)
-  → Pooling rules       (business policy)
-  → Scoring
+requestValidation        (—)  the request itself: coordinates, seats, sanity
+  → basicEligibility      (0)  status, vehicle capability, conservative seats
+  → operationalState      (1)  price each committed promise as a delay budget
+  → h3RouteCorridor       (2)  does the pickup fall on the remaining route?
+  → pickupRouteDistance   (3)  exact point-to-polyline distance to that route
+  → directionCompatibility(4)  bearing, destination proximity, destination ahead
+  → stopSequenceGeneration(5)  legal insertion positions under precedence+capacity
+  → pickupTimeWindow      (6)  drop orderings that break a committed promise
+  → detourLowerBound      (7)  prune what straight-line arithmetic already rules out
+  → roadRouting           (8)  Google OptimizeTours — the only expensive stage
+  → incrementalCost       (9)  measure every party's gain and loss. Rejects nobody
+  → hardConstraints      (10)  binary accept/reject, plus pooling policy
+  → scoring              (11)  fairness-weighted ranking. Lower is better
+  → commit               (12)  build the plan that becomes the new baseline
 ```
 
-Stage order is data, not code. The default runs the cheap ETA matrix before
-route insertion because one matrix call typically halves the candidate set for a
-fraction of the cost. The brief's original order — route feasibility first — is
-selectable in the settings panel for cost comparisons.
+Stage order is still data, but it is no longer freely reorderable: these
+fourteen have strict data dependencies — stage 9 cannot measure what stage 8 has
+not routed — so `DEFAULT_STAGE_ORDER` is the only sequence that runs end to end.
+Anything else is a diagnostic sub-pipeline.
 
 A few decisions worth knowing:
 
-- **Existing stops are frozen.** Insertion chooses two slots for the new rider
-  and never reorders committed stops. The question is "can this ride be
-  inserted", not "what is the globally optimal route". Candidate count is
-  therefore exactly `(n+1)(n+2)/2`.
+- **The corridor is built from remaining stops only.** A pickup sitting on a
+  stretch the vehicle has already driven past is a reject however close it
+  looks. This is the single most important property in the whole pipeline, and
+  the `Corridor Behind Vehicle` preset exists to keep it honest.
+- **The committed spine is locked, not merely ordered.** Stage 5 chooses two
+  slots for the new rider and never reorders committed stops, so the candidate
+  count is exactly `(n+1)(n+2)/2`. The solver is sent the same constraint. See
+  *Known limits* — the current form of that lock is stronger than intended.
+- **Commitments are priced, not frozen.** Stage 1 gives every committed stop a
+  delay budget from its own passenger's tolerance. Stage 6 rejects *orderings*
+  that break one, never the driver: a driver survives as long as any ordering
+  does.
 - **Capacity is per segment.** Occupancy rises and falls along the route and the
   walk is seeded with passengers already aboard, whose pickups are no longer in
-  the route. `totalSeats − passengerCount` is only used as a cheap pre-filter.
-- **Existing passenger delay is measured.** Derived from per-leg durations,
-  before versus after. This is the constraint aggregate detour cannot see: a
-  route can be 8% longer overall while making one rider fifteen minutes late.
-- **Feasibility and policy are separate.** Stage 6 asks whether a pool is
-  physically possible; stage 7 asks whether it is allowed.
+  the route. `totalSeats − passengerCount` is only a cheap pre-filter, which is
+  why a vehicle that is full right now can still take a rider after its next
+  drop.
+- **Measuring and judging are separate stages.** Stage 9 only measures; stage 10
+  only decides. Keeping them apart is what lets the UI show a driver's full
+  impact profile even when that driver was rejected.
+- **Stage 10 re-checks what the solver already enforced.** The solver was never
+  told about the driver's extra-distance cap or our pooling policy, and an
+  independent re-check is what makes the answer trustworthy rather than merely
+  plausible.
 - **Failure stops the pipeline.** Later stages report `NOT_EVALUATED`, never a
-  second rejection.
-
+  second rejection, so each driver has exactly one attributable failure point.
 ## Algorithm architecture
 
 ```
-React UI → Zustand stores → MatchingService → engine.ts → stages
-                                                  ↓
-                                        routeInsertion → RoutingEngine
-                                                            ↓
-                                              GoogleRoutesEngine | MockRoutingEngine
+React UI → Zustand stores → MatchingService → engine.ts → 14 stages
+                                                  │
+                    ┌─────────────────────────────┼──────────────────┐
+                    ▼                             ▼                  ▼
+             corridor.ts (H3)             RoutingEngine       OptimizerEngine
+                                                  │                  │
+                                   GoogleRoutesEngine|Mock   OptimizeToursEngine
+                                                                     │
+                                                        POST /api/optimize-tours
+                                                                     │
+                                            Vite middleware (ADC, server-side)
+                                                                     │
+                                          routeoptimization.googleapis.com
 ```
 
 ```
 src/
-  domain/      entities, settings defaults, zod schemas
-  lib/         h3, geo, rng, ids, format
-  routing/     RoutingEngine interface, cache, telemetry, both engines
-  matching/    engine, pipeline, stages, routeInsertion, occupancy, delays, scoring
-  services/    MatchingService seam + LocalMatchingService
-  stores/      scenario, settings, matching, map, runs
-  scenarios/   builders, presets, seeded generator, serialization
-  components/  layout, map, scenario, results, debug, ui
-  test/        deterministic vitest suite
+  domain/       entities, settings defaults, zod schemas + v1 migration
+  lib/          h3, geo, rng, ids, format
+  routing/      RoutingEngine interface, cache, telemetry, both engines
+  optimization/ OptimizerEngine, shipment model, solution reader, cache, telemetry
+  matching/     engine, pipeline, 14 stages, corridor, insertion, occupancy, delays
+  services/     MatchingService seam + LocalMatchingService
+  stores/       scenario, settings, matching, map, runs
+  scenarios/    builders, presets, seeded generator, serialization
+  components/   layout, map, scenario, results, debug, ui
+  test/         deterministic vitest suite
+server/         optimizerProxy.ts — the one deliberately Node-only file
 ```
 
-`domain`, `lib`, `routing` and `matching` contain no React and no `google.maps`
-imports, and are what would move to a Node service.
+`domain`, `lib`, `routing`, `optimization` and `matching` contain no React and
+no `google.maps` imports, and are what would move to a Node service unchanged.
 
 ### Cost control
 
-Routing is the only expensive part, and it is bounded rather than hoped about:
+Two remote services, billed differently, so they have separate budgets:
 
-- Stages 0–4 make no calls at all.
-- Stage 5 is one matrix call for every surviving driver.
-- Stage 6 prunes insertion candidates on capacity and straight-line distance
-  before routing, then routes at most `maxRoutedInsertionsPerDriver` per driver.
-- `maxRoutingCallsPerRun` caps the whole run. Drivers past the cap are reported
-  `NOT_EVALUATED` with `ROUTING_BUDGET_EXCEEDED` rather than silently failed.
-- Results are cached on a key covering every parameter that changes the answer,
+- Stages 0–7 make no calls at all.
+- Stage 8 makes one `OptimizeTours` call per surviving driver, capped by
+  `maxOptimizerCallsPerRun`. `OptimizeTours` prices per *shipment*, so the debug
+  console reports shipments billed alongside call count.
+- Baselines — the driver's pre-insertion route and the new rider's solo trip —
+  stay on the Routes API, capped by `maxRoutingCallsPerRun`. There is nothing to
+  optimise about an already-decided route, so paying solver pricing for a pure
+  measurement would be waste.
+- Stage 7 prunes candidates on a provable straight-line lower bound before any
+  of that, then shortlists at most `maxRoutedInsertionsPerDriver`.
+- Drivers past either cap are reported `NOT_EVALUATED`, never silently failed.
+  Budget exhaustion is not an opinion about a driver.
+- Both layers cache on a key covering every parameter that changes the answer,
   not just the coordinates.
 
-The debug console shows calls, matrix elements, cache hits and misses, remaining
-budget, and per-stage timings.
-
+The debug console shows both budgets, cache hits and misses, and per-stage
+timings.
 ## How to add a new filter or stage
 
 1. Add a reason code to `src/matching/reasons.ts` with its category and label.
@@ -195,12 +266,22 @@ budget, and per-stage timings.
 3. Add the stage id to `StageId` in `src/domain/entities.ts`, register it in
    `src/matching/stages/index.ts`, and describe it in `STAGE_METADATA` in
    `src/matching/pipeline.ts`.
-4. Add it to `DEFAULT_STAGE_ORDER` in `src/domain/settings.ts`.
-5. Cover it in `src/test/`.
+4. Add it to `DEFAULT_STAGE_ORDER` in `src/domain/settings.ts`, in a position
+   its data dependencies allow. The order is data, but it is not a free choice:
+   a stage that reads `getSolution` must sit after `roadRouting`, one that reads
+   `getSequences` after `stopSequenceGeneration`, and so on.
+5. Cover it in `src/test/`. `src/test/fixtures/runStages.ts` runs stages 1–9
+   against a fixture context, so a test for a late stage asserts on real
+   pipeline data rather than hand-built metrics.
 
 Attach both `value` and `threshold` to every rejection reason. That pairing is
 what lets the UI render "Detour 24.1% / max 15%" for any code without a
 per-code branch.
+
+Stages pass data to each other through the context, never through another
+stage's `notes` — `getCorridor`/`setCorridor`, `getSequences`/`setSequences`,
+`getDelayBudgets`/`setDelayBudgets`, `getSolution`/`setSolution` all follow one
+pattern. `notes` is for the UI.
 
 ## How to add a new vehicle type
 
@@ -222,6 +303,7 @@ Each preset targets one specific behaviour:
 | Route Detour Test      | Perpendicular request forcing a detour rejection            |
 | Sparse Driver Area     | Ring expansion runs to the limit                            |
 | Dense Driver Area      | Search stops at ring 0                                      |
+| Corridor Behind Vehicle| Pickup on the road already driven — the corridor regression |
 | No Driver Available    | Empty result path                                           |
 | Mixed Vehicle Fleet    | Vehicle preference filtering                                |
 | Large Pooling Scenario | 500 drivers, 200 rides, routing budget                      |
@@ -232,13 +314,21 @@ Each preset targets one specific behaviour:
 bun run test
 ```
 
-The suite is deterministic: it runs against `MockRoutingEngine`, which has no
-randomness, and seeded generation. It covers H3 ring attribution and dedup,
+The suite is deterministic and offline. It runs against `MockRoutingEngine` and
+`StubOptimizerEngine`, neither of which has any randomness, plus seeded
+generation. No test reaches the network, so none of the Google setup above is
+needed to run it.
+
+It covers every stage's own behaviour, plus the properties that span them: H3
+ring attribution and dedup, the corridor built from remaining stops only,
 segment occupancy including the already-aboard case, insertion ordering and
-frozen-order preservation, detour and delay arithmetic, `NOT_EVALUATED`
-propagation, routing budget exhaustion, scenario immutability, and one
-end-to-end Delhi scenario asserting a pass plus capacity, vehicle, offline, ETA,
-detour, pooling and H3 rejections by reason code.
+frozen-order preservation, the admissibility of stage 7's lower bound, detour
+and delay arithmetic, `NOT_EVALUATED` propagation and one attributable failure
+point per driver, budget exhaustion on both remote services, scenario
+immutability, the commit store's apply and undo, that every preset still does
+what its name claims, and one end-to-end Delhi scenario asserting a pass plus
+capacity, vehicle, offline, corridor, proximity, direction and detour
+rejections by reason code.
 
 ## Known limits
 
@@ -248,3 +338,25 @@ detour, pooling and H3 rejections by reason code.
   rejected with `WAYPOINT_LIMIT_EXCEEDED`.
 - Simulation playback and A/B configuration comparison are not built yet. The
   `MatchingRun` snapshot and the passenger state machine are the hooks for both.
+- **Stage 11 ranks drivers, not sequences.** `OptimizeTours` returns one
+  sequence per driver, so the Overview's Route 1/2/3 example — our fairness
+  score overriding the solver's vehicle-cost winner among several candidate
+  sequences — is not something this lab can show. That needs the Phase 3
+  in-house insertion search. The scoring panel says so too.
+- **The locked spine is stronger than the Overview intends.** `lockedVisits`
+  maps to `RELAX_ALL_AFTER_THRESHOLD`, which pins committed stops to the *head*
+  of the route rather than merely preserving their order among themselves. The
+  new rider can therefore only ever be appended after every committed stop. Two
+  consequences: a rider can never be collected on the way to an existing rider's
+  drop, which is the commonest pooling case; and committed arrivals never move,
+  so existing-passenger delay is structurally zero and the 30% existing-rider
+  term in the fairness score is always zero with it. Relaxing it is a product
+  decision about how much freedom the solver gets over promises already made.
+  See the note in `src/optimization/ShipmentModelBuilder.ts`; the behaviour is
+  pinned by `incrementalCost.test.ts` so it cannot drift unnoticed.
+- **The optimizer proxy is dev-server only.** `bun run build` produces static
+  files with no server behind them, so a built bundle cannot reach stage 8.
+  Deliberate: this is a lab tool, not something anyone deploys.
+- **Commit concurrency is unsolved.** The lab commits one request at a time, so
+  the Overview's atomic-seat-reservation problem never arises here. That is a
+  simulation artefact, not a solved problem.
