@@ -8,11 +8,9 @@ import { evaluationFor, failureCodes, runFixture, stageStatus } from "./fixtures
 /**
  * One scenario that walks the pipeline end to end.
  *
- * Stages 0 through 10 are implemented; only scoring and commit are still no-op
- * placeholders. The assertions below pin both halves: what the implemented
- * filters decide, and the fact that every unimplemented stage passes everyone
- * through. Tasks 20-21 add each remaining stage's rejections back, one task at
- * a time, and tighten this file as they go.
+ * All fourteen stages are implemented. The assertions below pin what each
+ * filter decides and what the funnel looks like end to end; Tasks 22-24 build
+ * the UI, the presets and the documentation on top of it.
  */
 describe("Delhi NCR morning pool", () => {
   let result: MatchingResult;
@@ -63,19 +61,32 @@ describe("Delhi NCR morning pool", () => {
     expect(new Set(codes).size).toBe(3);
   });
 
-  it("passes every eligible driver through the unimplemented stages", () => {
-    // Placeholder stages must be transparent, not silently rejecting.
-    // Stages leave this list as they are implemented, and pick up their own
-    // assertions above. Gone so far: operationalState, h3RouteCorridor,
-    // pickupRouteDistance, directionCompatibility, stopSequenceGeneration,
-    // pickupTimeWindow, detourLowerBound, roadRouting, incrementalCost,
-    // hardConstraints.
-    for (const stageId of [
-      "commit",
-    ]) {
-      expect(stageStatus(result, "D001", stageId)).toBe("PASSED");
-      // A driver that already failed stays NOT_EVALUATED rather than failing again.
-      expect(stageStatus(result, "D004", stageId)).toBe("NOT_EVALUATED");
+  it("marks a driver NOT_EVALUATED after the stage that failed it, never FAILED twice", () => {
+    // Each driver has exactly one attributable failure point. D004 dies at
+    // stage 0, so every later stage must record it as not evaluated rather
+    // than re-rejecting it — otherwise the rejection dashboard would count one
+    // driver against a dozen reason codes.
+    const failedAt = "basicEligibility";
+    let seenFailure = false;
+
+    for (const stage of result.stageResults) {
+      const status = stageStatus(result, "D004", stage.stageId);
+
+      if (stage.stageId === failedAt) {
+        expect(status).toBe("FAILED");
+        seenFailure = true;
+        continue;
+      }
+
+      expect(status).toBe(seenFailure ? "NOT_EVALUATED" : "PASSED");
+    }
+
+    expect(seenFailure).toBe(true);
+    expect(failureCodes(result, "D004")).toHaveLength(1);
+
+    // And the winner passes every one of the fourteen.
+    for (const stage of result.stageResults) {
+      expect(stageStatus(result, "D001", stage.stageId)).toBe("PASSED");
     }
   });
 

@@ -11,6 +11,7 @@ import { DEFAULT_SETTINGS } from "@/domain/settings";
 import type { RideCorridor } from "@/matching/corridor";
 import type { StopDelayBudget } from "@/matching/stages/operationalState";
 import type {
+  CommitPlan,
   DriverMetrics,
   MatchingContext,
   RouteInsertionCandidate,
@@ -160,6 +161,7 @@ export function makeContext(input: MakeContextInput): MatchingContext & {
   const solutions = new Map<string, SolvedRoute>();
   const insertions = new Map<string, RouteInsertionResult>();
   const scores = new Map<string, ScoreBreakdown>();
+  const commitPlans = new Map<string, CommitPlan>();
 
   return {
     scenario,
@@ -197,6 +199,9 @@ export function makeContext(input: MakeContextInput): MatchingContext & {
     },
     recordInsertion: (id, insertion) => {
       insertions.set(id, insertion);
+    },
+    recordCommitPlan: (id, plan) => {
+      commitPlans.set(id, plan);
     },
     recordScore: (id, breakdown) => {
       scores.set(id, breakdown);

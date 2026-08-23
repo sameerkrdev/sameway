@@ -10,6 +10,7 @@ import type {
   Vehicle,
 } from "@/domain/entities";
 import { createId } from "@/lib/ids";
+import type { CommitPlan } from "@/matching/types";
 import { getPreset, DEFAULT_PRESET_ID } from "@/scenarios/presets";
 
 /**
@@ -19,10 +20,15 @@ import { getPreset, DEFAULT_PRESET_ID } from "@/scenarios/presets";
  */
 interface ScenarioState {
   scenario: Scenario;
+  /** The scenario as it was before the most recent commit, for undo. */
+  lastCommittedScenario: Scenario | null;
 
   setScenario(scenario: Scenario): void;
   renameScenario(name: string): void;
   resetScenario(): void;
+
+  commitMatch(plan: CommitPlan): void;
+  undoCommit(): void;
 
   upsertDriver(driver: Driver): void;
   removeDriver(driverId: string): void;
@@ -68,12 +74,69 @@ function replaceById<T extends { id: string }>(items: T[], next: T): T[] {
 
 export const useScenarioStore = create<ScenarioState>((set, get) => ({
   scenario: loadDefaultScenario(),
+  lastCommittedScenario: null,
 
   setScenario: (scenario) => set({ scenario }),
 
   renameScenario: (name) => set((state) => ({ scenario: { ...state.scenario, name } })),
 
   resetScenario: () => set({ scenario: loadDefaultScenario() }),
+
+  /**
+   * Applies a winning match to the live scenario.
+   *
+   * This is the only place a match ever changes the world. Keeping it out of
+   * the engine is what lets a run be replayed, snapshotted and compared — and
+   * what makes "run matching" safe to click repeatedly.
+   */
+  commitMatch: (plan) => {
+    set((state) => {
+      const previous = structuredClone(state.scenario);
+      const scenario = structuredClone(state.scenario);
+
+      const driver = scenario.drivers.find((candidate) => candidate.id === plan.driverId);
+      if (!driver) {
+        return state;
+      }
+
+      const rideId = plan.rideId ?? createId("ride");
+      let ride = scenario.rides.find((candidate) => candidate.id === rideId);
+
+      if (!ride) {
+        ride = { id: rideId, driverId: driver.id, passengerIds: [], stops: [] };
+        scenario.rides.push(ride);
+        driver.currentRideId = rideId;
+      }
+
+      if (!ride.passengerIds.includes(plan.passengerId)) {
+        ride.passengerIds.push(plan.passengerId);
+      }
+
+      ride.stops = plan.stops.map((stop, index) => ({
+        id: stop.id,
+        rideId,
+        passengerId: stop.passengerId,
+        type: stop.type,
+        location: stop.location,
+        sequence: index,
+        // The solved arrival becomes the promise the next insertion protects.
+        originalEtaMin: stop.originalEtaMin,
+      }));
+
+      scenario.requests = scenario.requests.filter((candidate) => candidate.id !== plan.requestId);
+
+      return { ...state, scenario, lastCommittedScenario: previous };
+    });
+  },
+
+  /** Restores the scenario as it was before the most recent commit. */
+  undoCommit: () => {
+    set((state) =>
+      state.lastCommittedScenario
+        ? { ...state, scenario: state.lastCommittedScenario, lastCommittedScenario: null }
+        : state,
+    );
+  },
 
   upsertDriver: (driver) =>
     set((state) => ({

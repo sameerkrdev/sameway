@@ -7120,7 +7120,7 @@ git commit -m "feat(simulation): stage 11 fairness scoring, lower is better"
 
 ---
 
-## Task 21: Stage 12 — Commit and rolling horizon
+## Task 21: Stage 12 — Commit and rolling horizon — LANDED
 
 **Files:**
 - Modify: `src/matching/stages/commit.ts`
@@ -7144,7 +7144,7 @@ git commit -m "feat(simulation): stage 11 fairness scoring, lower is better"
   - `DriverEvaluation.commitPlan?: CommitPlan`
   - `scenarioStore.commitMatch(plan: CommitPlan): void` and `scenarioStore.undoCommit(): void`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/test/commit.test.ts`:
 
@@ -7222,12 +7222,12 @@ describe("commit", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `bun run test src/test/commit.test.ts`
 Expected: FAIL — the no-op stage writes no notes.
 
-- [ ] **Step 3: Implement the stage**
+- [x] **Step 3: Implement the stage**
 
 Replace `src/matching/stages/commit.ts`:
 
@@ -7306,7 +7306,7 @@ export const commitStage: MatchingStage = {
 
 Add `CommitPlan` to `src/matching/types.ts` exactly as given in this task's Interfaces block, plus `commitPlan?: CommitPlan` on `DriverEvaluation`. In `EvaluationLedger` (`src/matching/evaluation.ts`), add `recordCommitPlan(driverId, plan)` and attach it in `finalize`; wire the corresponding `context.recordCommitPlan` in `createContext` and in the test fixture, and call it from the stage alongside the notes write.
 
-- [ ] **Step 4: Apply the plan in the store**
+- [x] **Step 4: Apply the plan in the store**
 
 In `src/stores/scenarioStore.ts`, add:
 
@@ -7370,7 +7370,7 @@ In `src/stores/scenarioStore.ts`, add:
 
 with `lastCommittedScenario: Scenario | null` added to the store's state and initialised to `null`.
 
-- [ ] **Step 5: Add the rolling-horizon regression**
+- [x] **Step 5: Add the rolling-horizon regression**
 
 Append to `src/test/commit.test.ts` a test that runs the pipeline, applies the plan by hand (the store is React-free zustand, so it can be imported directly in vitest), and re-runs against the mutated scenario:
 
@@ -7389,12 +7389,12 @@ it("matches a following request against the post-commit route", async () => {
 
 Import `CommitPlan` from `@/matching/types`.
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `bun run check-types && bun run test`
 Expected: green, including the untouched scenario-immutability assertion in `e2e-scenario.test.ts`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/matching src/stores src/test

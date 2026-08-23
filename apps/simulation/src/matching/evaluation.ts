@@ -2,6 +2,7 @@ import type { StageId } from "@/domain/entities";
 
 import type { MatchReason } from "./reasons";
 import type {
+  CommitPlan,
   DriverEvaluation,
   DriverMetrics,
   DriverStageResult,
@@ -16,6 +17,7 @@ interface MutableEvaluation {
   reasons: MatchReason[];
   insertion?: RouteInsertionResult;
   scoreBreakdown?: ScoreBreakdown;
+  commitPlan?: CommitPlan;
   finalScore?: number;
   failedAtStageId?: StageId;
   alive: boolean;
@@ -68,6 +70,10 @@ export class EvaluationLedger {
     this.require(driverId).insertion = insertion;
   }
 
+  recordCommitPlan(driverId: string, plan: CommitPlan): void {
+    this.require(driverId).commitPlan = plan;
+  }
+
   recordScore(driverId: string, breakdown: ScoreBreakdown): void {
     const record = this.require(driverId);
     record.scoreBreakdown = breakdown;
@@ -110,6 +116,7 @@ export class EvaluationLedger {
         reasons: record.reasons,
         ...(record.insertion ? { insertion: record.insertion } : {}),
         ...(record.scoreBreakdown ? { scoreBreakdown: record.scoreBreakdown } : {}),
+        ...(record.commitPlan ? { commitPlan: record.commitPlan } : {}),
         ...(record.finalScore !== undefined ? { finalScore: record.finalScore } : {}),
         finalStatus: record.alive && !forceFailed ? "PASSED" : "FAILED",
         ...(record.failedAtStageId ? { failedAtStageId: record.failedAtStageId } : {}),

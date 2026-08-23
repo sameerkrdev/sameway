@@ -22,6 +22,7 @@ import type {
   MatchingResult,
   MatchingStage,
   MatchingSummary,
+  CommitPlan,
   RejectionGroup,
   RouteInsertionCandidate,
   RouteInsertionResult,
@@ -273,6 +274,8 @@ function createContext(input: {
       ledger.recordMetrics(driverId, metrics),
     recordInsertion: (driverId: string, insertion: RouteInsertionResult): void =>
       ledger.recordInsertion(driverId, insertion),
+    recordCommitPlan: (driverId: string, plan: CommitPlan): void =>
+      ledger.recordCommitPlan(driverId, plan),
     recordScore: (driverId: string, breakdown: ScoreBreakdown): void =>
       ledger.recordScore(driverId, breakdown),
   };

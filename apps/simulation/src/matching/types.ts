@@ -139,6 +139,28 @@ export interface ProposedStop {
   isNew: boolean;
 }
 
+/**
+ * A committed match, ready to be applied to the scenario.
+ *
+ * Built by stage 12 but never applied by it: `runMatching` stays pure so a run
+ * can be replayed, snapshotted and compared. `scenarioStore.commitMatch` is the
+ * only thing that changes the world.
+ */
+export interface CommitPlan {
+  driverId: string;
+  rideId: string | null;
+  passengerId: string;
+  requestId: string;
+  /** The winning sequence, with re-stamped ETAs. */
+  stops: {
+    id: string;
+    passengerId: string;
+    type: "PICKUP" | "DROP";
+    location: LatLng;
+    originalEtaMin: number;
+  }[];
+}
+
 export interface RouteInsertionCandidate {
   pickupIndex: number;
   dropIndex: number;
@@ -229,6 +251,7 @@ export interface DriverEvaluation {
   reasons: MatchReason[];
   insertion?: RouteInsertionResult;
   scoreBreakdown?: ScoreBreakdown;
+  commitPlan?: CommitPlan;
   finalScore?: number;
   finalStatus: "PASSED" | "FAILED";
   failedAtStageId?: StageId;
@@ -325,6 +348,7 @@ export interface MatchingContext {
   recordMetrics(driverId: string, metrics: DriverMetrics): void;
   recordInsertion(driverId: string, insertion: RouteInsertionResult): void;
   recordScore(driverId: string, breakdown: ScoreBreakdown): void;
+  recordCommitPlan(driverId: string, plan: CommitPlan): void;
 }
 
 export interface DriverVerdict {
