@@ -11,7 +11,7 @@ import type {
 } from "@/domain/entities";
 import { createId } from "@/lib/ids";
 import type { CommitPlan } from "@/matching/types";
-import { getPreset, DEFAULT_PRESET_ID } from "@/scenarios/presets";
+import { createBlankScenario } from "@/scenarios/builders";
 
 /**
  * Owns the world being simulated: who exists, where they are, what they are
@@ -50,11 +50,7 @@ interface ScenarioState {
 }
 
 function loadDefaultScenario(): Scenario {
-  const preset = getPreset(DEFAULT_PRESET_ID);
-  if (!preset) {
-    throw new Error("Default scenario preset is missing");
-  }
-  return preset.build();
+  return createBlankScenario();
 }
 
 /** Renumbers stops so `sequence` always agrees with array order. */

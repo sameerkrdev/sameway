@@ -73,6 +73,7 @@ const rideSchema = z.object({
   driverId: z.string().min(1),
   passengerIds: z.array(z.string()),
   stops: z.array(stopSchema),
+  coveredPath: z.array(latLngSchema).optional(),
 });
 
 const rideRequestSchema = z.object({

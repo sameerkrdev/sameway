@@ -6,6 +6,7 @@ import type { DriverEvaluation } from "@/matching/types";
 import { usePolyline } from "./useMapPrimitives";
 
 const COMMITTED_ROUTE_COLOR = "#94a3b8";
+const COVERED_ROUTE_COLOR = "#64748b";
 const ORIGINAL_ROUTE_COLOR = "#64748b";
 const PROPOSED_ROUTE_COLOR = "#22c55e";
 const REJECTED_ROUTE_COLOR = "#ef4444";
@@ -17,7 +18,23 @@ function rideToPath(scenario: Scenario, ride: Ride): LatLng[] {
   return driver ? [driver.location, ...path] : path;
 }
 
-/** One driver's committed route, drawn faintly for context. */
+/** Already-driven trail behind the vehicle. */
+function CoveredRoute({ path, dimmed }: { path: LatLng[]; dimmed: boolean }) {
+  usePolyline(
+    path.length >= 2
+      ? {
+          path,
+          color: COVERED_ROUTE_COLOR,
+          weight: 4,
+          opacity: dimmed ? 0.15 : 0.55,
+          zIndex: 0,
+        }
+      : null,
+  );
+  return null;
+}
+
+/** One driver's committed remaining route, drawn faintly for context. */
 function CommittedRoute({ path, dimmed }: { path: LatLng[]; dimmed: boolean }) {
   usePolyline(
     path.length >= 2
@@ -88,12 +105,22 @@ export function RouteLayer({
       // Drawing every committed route for 200 rides is unreadable and slow, so
       // by default only the selected driver's route is shown.
       const ride = scenario.rides.find((entry) => entry.driverId === selectedDriverId);
-      return ride ? [{ id: ride.id, path: rideToPath(scenario, ride), dimmed: false }] : [];
+      return ride
+        ? [
+            {
+              id: ride.id,
+              path: rideToPath(scenario, ride),
+              coveredPath: ride.coveredPath ?? [],
+              dimmed: false,
+            },
+          ]
+        : [];
     }
 
     return scenario.rides.map((ride) => ({
       id: ride.id,
       path: rideToPath(scenario, ride),
+      coveredPath: ride.coveredPath ?? [],
       dimmed: visibleDriverIds !== null && !visibleDriverIds.has(ride.driverId),
     }));
   }, [scenario, showAllRoutes, selectedDriverId, visibleDriverIds]);
@@ -103,7 +130,10 @@ export function RouteLayer({
   return (
     <>
       {committedRoutes.map((route) => (
-        <CommittedRoute key={route.id} path={route.path} dimmed={route.dimmed} />
+        <span key={route.id}>
+          <CoveredRoute path={route.coveredPath} dimmed={route.dimmed} />
+          <CommittedRoute path={route.path} dimmed={route.dimmed} />
+        </span>
       ))}
       <SelectedRoute
         originalPath={insertion?.originalPath}

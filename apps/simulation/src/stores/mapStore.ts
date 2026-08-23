@@ -13,7 +13,8 @@ export type MapMode =
   | "ADD_PICKUP"
   | "ADD_DROP"
   | "ADD_STOP"
-  | "INSPECT_H3";
+  | "INSPECT_H3"
+  | "RIDE_SKETCH";
 
 export const MAP_MODE_LABELS: Record<MapMode, string> = {
   NORMAL: "Normal",
@@ -22,6 +23,7 @@ export const MAP_MODE_LABELS: Record<MapMode, string> = {
   ADD_DROP: "Add drop",
   ADD_STOP: "Add stop",
   INSPECT_H3: "Inspect H3",
+  RIDE_SKETCH: "Ride sketch",
 };
 
 export const MAP_MODE_HINTS: Record<MapMode, string> = {
@@ -31,6 +33,7 @@ export const MAP_MODE_HINTS: Record<MapMode, string> = {
   ADD_DROP: "Click anywhere to set the request drop.",
   ADD_STOP: "Click anywhere to append a stop to the ride being edited.",
   INSPECT_H3: "Click anywhere to inspect the H3 cell under the cursor.",
+  RIDE_SKETCH: "Use the sketch toolkit tools, then Apply to write into the scenario.",
 };
 
 /** What a click in a placement mode should update. */

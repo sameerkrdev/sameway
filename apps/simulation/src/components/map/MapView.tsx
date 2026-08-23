@@ -1,5 +1,5 @@
 import { APIProvider, Map, MapControl, ControlPosition } from "@vis.gl/react-google-maps";
-import { Grid3x3, Route as RouteIcon, X } from "lucide-react";
+import { Grid3x3, PencilRuler, Route as RouteIcon, X } from "lucide-react";
 import { useCallback, useMemo } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -10,12 +10,15 @@ import { getH3CellFor } from "@/lib/h3";
 import { shortCell } from "@/lib/format";
 import { driversSurvivingStage, evaluationById, useMatchingStore } from "@/stores/matchingStore";
 import { MAP_MODE_HINTS, MAP_MODE_LABELS, useMapStore } from "@/stores/mapStore";
+import { useRideSketchStore } from "@/stores/rideSketchStore";
 import { useScenarioStore } from "@/stores/scenarioStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 
 import { H3Overlay } from "./H3Overlay";
 import { LocationSearch } from "./LocationSearch";
 import { DriverMarker, RequestMarker, StopMarker } from "./markers";
+import { RideSketchLayer } from "./RideSketchLayer";
+import { RideSketchToolkit } from "./RideSketchToolkit";
 import { RouteLayer } from "./RouteLayer";
 import { useFitBounds } from "./useMapPrimitives";
 
@@ -54,6 +57,11 @@ function MapSurface() {
   const focusRequest = useMapStore((state) => state.focusRequest);
   const inspectedCell = useMapStore((state) => state.inspectedCell);
 
+  const sketchHandleMapClick = useRideSketchStore((state) => state.handleMapClick);
+  const sketchSelectExisting = useRideSketchStore((state) => state.selectExistingDriver);
+  const sketchBeginNew = useRideSketchStore((state) => state.beginNewDriver);
+  const isSketching = mode === "RIDE_SKETCH";
+
   const currentRun = useMatchingStore((state) => state.currentRun);
   const selectedDriverId = useMatchingStore((state) => state.selectedDriverId);
   const replayStageIndex = useMatchingStore((state) => state.replayStageIndex);
@@ -79,6 +87,11 @@ function MapSurface() {
   const handleMapClick = useCallback(
     (point: LatLng) => {
       if (mode === "NORMAL") {
+        return;
+      }
+
+      if (mode === "RIDE_SKETCH") {
+        sketchHandleMapClick(point);
         return;
       }
 
@@ -123,7 +136,17 @@ function MapSurface() {
 
       useMapStore.getState().resetMode();
     },
-    [mode, pendingTarget, request, scenario.rides, setDriverLocation, setRideStops, upsertRequest, settings.h3Resolution],
+    [
+      mode,
+      pendingTarget,
+      request,
+      scenario.rides,
+      setDriverLocation,
+      setRideStops,
+      upsertRequest,
+      settings.h3Resolution,
+      sketchHandleMapClick,
+    ],
   );
 
   const visibleDrivers = useMemo(() => {
@@ -179,24 +202,31 @@ function MapSurface() {
         <RouteLayer
           scenario={scenario}
           showAllRoutes={showAllRoutes}
-          selectedDriverId={selectedDriverId}
-          selectedEvaluation={selectedEvaluation}
+          selectedDriverId={isSketching ? null : selectedDriverId}
+          selectedEvaluation={isSketching ? undefined : selectedEvaluation}
           visibleDriverIds={survivingDriverIds}
         />
+
+        {isSketching ? <RideSketchLayer /> : null}
 
         {renderedDrivers.map((driver) => (
           <DriverMarker
             key={driver.id}
             driver={driver}
             selected={driver.id === selectedDriverId}
-            dimmed={false}
+            dimmed={isSketching}
             draggable={mode === "NORMAL"}
-            onSelect={selectDriver}
+            onSelect={(id) => {
+              selectDriver(id);
+              if (isSketching) {
+                sketchSelectExisting(scenario, id);
+              }
+            }}
             onDragEnd={setDriverLocation}
           />
         ))}
 
-        {selectedRide
+        {!isSketching && selectedRide
           ? [...selectedRide.stops]
               .sort((a, b) => a.sequence - b.sequence)
               .map((stop, index) => (
@@ -210,7 +240,7 @@ function MapSurface() {
               ))
           : null}
 
-        {request ? (
+        {!isSketching && request ? (
           <>
             <RequestMarker position={request.pickup} kind="PICKUP" />
             <RequestMarker position={request.drop} kind="DROP" />
@@ -231,7 +261,29 @@ function MapSurface() {
 
       <MapModeBanner />
 
+      {isSketching ? <RideSketchToolkit /> : null}
+
       <div className="absolute right-3 bottom-3 flex flex-col gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)]/95 p-2 text-xs shadow-lg backdrop-blur">
+        <Button
+          size="xs"
+          variant={isSketching ? "default" : "outline"}
+          className="justify-start"
+          onClick={() => {
+            if (isSketching) {
+              useMapStore.getState().resetMode();
+              return;
+            }
+            if (selectedDriverId) {
+              sketchSelectExisting(scenario, selectedDriverId);
+            } else {
+              sketchBeginNew();
+            }
+            useMapStore.getState().setMode("RIDE_SKETCH");
+          }}
+        >
+          <PencilRuler className="size-3.5" />
+          {isSketching ? "Exit ride sketch" : "Ride sketch"}
+        </Button>
         <label className="flex items-center justify-between gap-3">
           <span className="flex items-center gap-1.5">
             <Grid3x3 className="size-3.5" aria-hidden />

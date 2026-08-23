@@ -112,6 +112,11 @@ export interface Ride {
   driverId: string;
   passengerIds: string[];
   stops: Stop[];
+  /**
+   * Already-driven trail for map visualization only. Matching uses
+   * `driver.location` plus remaining `stops` — never this polyline.
+   */
+  coveredPath?: LatLng[];
 }
 
 export const ANY_VEHICLE = "ANY" as const;

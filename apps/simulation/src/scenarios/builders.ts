@@ -124,6 +124,7 @@ export function makeRide(
   id: string,
   driverId: string,
   stops: Omit<Stop, "rideId" | "sequence">[],
+  coveredPath?: LatLng[],
 ): Ride {
   const orderedStops: Stop[] = stops.map((stop, index) => ({
     ...stop,
@@ -136,6 +137,7 @@ export function makeRide(
     driverId,
     passengerIds: [...new Set(orderedStops.map((stop) => stop.passengerId))],
     stops: orderedStops,
+    ...(coveredPath && coveredPath.length > 0 ? { coveredPath } : {}),
   };
 }
 
@@ -223,6 +225,22 @@ export function makeScenario(input: ScenarioInput): Scenario {
       stageOrder: [...(input.settings?.stageOrder ?? DEFAULT_SETTINGS.stageOrder)],
     },
   };
+}
+
+/**
+ * Empty lab world: simulation settings only. No drivers, fleet, passengers,
+ * rides, or requests until the user loads a preset or sketches on the map.
+ */
+export function createBlankScenario(name = "Untitled scene"): Scenario {
+  return makeScenario({
+    id: "sc_blank",
+    name,
+    drivers: [],
+    vehicles: [],
+    passengers: [],
+    rides: [],
+    requests: [],
+  });
 }
 
 /** Links a driver to a ride from both sides so lookups never dangle. */
