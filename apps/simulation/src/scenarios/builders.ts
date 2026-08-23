@@ -10,6 +10,7 @@ import type {
   Vehicle,
 } from "@/domain/entities";
 import { DEFAULT_PASSENGER_DELAY_BUDGETS, DEFAULT_SETTINGS } from "@/domain/settings";
+import { mockLeg } from "@/routing/MockRoutingEngine";
 
 /** Demo geography only. No matching logic may reference these values. */
 export const DELHI_PLACES = {
@@ -168,6 +169,42 @@ export interface ScenarioInput {
   settings?: Partial<MatchingSettings>;
 }
 
+/**
+ * Stamps every ride's stops with the ETA it would have been promised when the
+ * ride was committed, walking from its driver through the same leg model the
+ * routing engine uses.
+ *
+ * Builders default `originalEtaMin` to 0, which is fine as a field default and
+ * wrong as a promise: it is the value stages 6, 9, 10 and 12 measure delay
+ * against, so a stop 14 km out claiming "promised at minute 0" reads as thirty
+ * minutes late before anything has been inserted, and the ride breaches its own
+ * delay budget the moment a solver looks at it. Doing this in `makeScenario`
+ * rather than in each preset means a new preset cannot forget it.
+ */
+function stampRideEtas(drivers: readonly Driver[], rides: readonly Ride[]): Ride[] {
+  const driversById = new Map(drivers.map((driver) => [driver.id, driver]));
+
+  return rides.map((ride) => {
+    const driver = driversById.get(ride.driverId);
+
+    if (!driver) {
+      return ride;
+    }
+
+    let cumulativeMin = 0;
+    let previous = driver.location;
+
+    return {
+      ...ride,
+      stops: ride.stops.map((stop) => {
+        cumulativeMin += mockLeg(previous, stop.location).durationMin;
+        previous = stop.location;
+        return { ...stop, originalEtaMin: cumulativeMin };
+      }),
+    };
+  });
+}
+
 export function makeScenario(input: ScenarioInput): Scenario {
   return {
     schemaVersion: 2,
@@ -177,7 +214,7 @@ export function makeScenario(input: ScenarioInput): Scenario {
     drivers: input.drivers,
     vehicles: input.vehicles ?? DEFAULT_FLEET,
     passengers: input.passengers,
-    rides: input.rides ?? [],
+    rides: stampRideEtas(input.drivers, input.rides ?? []),
     requests: input.requests,
     settings: {
       ...DEFAULT_SETTINGS,

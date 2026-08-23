@@ -7475,7 +7475,7 @@ git commit -m "feat(simulation): UI for the thirteen-stage pipeline and optimize
 
 ---
 
-## Task 23: Presets and the end-to-end scenario
+## Task 23: Presets and the end-to-end scenario — LANDED
 
 **Files:**
 - Modify: `src/scenarios/presets/index.ts`
@@ -7487,7 +7487,7 @@ git commit -m "feat(simulation): UI for the thirteen-stage pipeline and optimize
 - Consumes: schema v2 (Task 1); the corridor primitive (Task 11).
 - Produces: a twelfth preset, `Corridor Behind Vehicle`.
 
-- [ ] **Step 1: Re-tune the three affected presets**
+- [x] **Step 1: Re-tune the three affected presets**
 
 **Sparse Driver Area**, **Dense Driver Area** and **Busy Delhi** were written to exercise ring expansion against *driver location* cells. Under corridor indexing, a driver's cells are spread along their route, which changes how many rings the search needs. Run each preset and adjust driver placement or `minimumUsableCandidates` until the preset again demonstrates what its name claims:
 
@@ -7497,11 +7497,11 @@ git commit -m "feat(simulation): UI for the thirteen-stage pipeline and optimize
 
 Verify with: `bun run dev`, load each preset, run matching, read `stoppedAtRing` and `searchExhausted` in the stage 2 details panel.
 
-- [ ] **Step 2: Add the Corridor Behind Vehicle preset**
+- [x] **Step 2: Add the Corridor Behind Vehicle preset**
 
 In `src/scenarios/presets/index.ts`, add a preset with one driver mid-route on an eastbound trip, their passenger already `IN_RIDE`, and the new request's pickup placed on the stretch of road the vehicle has already driven past. This is the Overview's Example 11 and the single most important regression in the suite.
 
-- [ ] **Step 3: Assert it in the e2e test**
+- [x] **Step 3: Assert it in the e2e test**
 
 In `src/test/e2e-scenario.test.ts`, add:
 
@@ -7521,12 +7521,12 @@ Update the existing e2e assertions: the run now covers fourteen stages, the pass
 
 Wire `runEngine` in `src/test/fixtures/runEngine.ts` to pass a `StubOptimizerEngine` so the e2e stays offline.
 
-- [ ] **Step 4: Run the suite**
+- [x] **Step 4: Run the suite**
 
 Run: `bun run test`
 Expected: green, including all eleven original preset behaviours plus the new one.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/scenarios src/test

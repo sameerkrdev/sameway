@@ -369,6 +369,83 @@ const denseDriverArea: ScenarioPreset = {
     }),
 };
 
+const corridorBehindVehicle: ScenarioPreset = {
+  id: "corridor-behind-vehicle",
+  name: "Corridor Behind Vehicle",
+  tests:
+    "A pickup sitting exactly on the route the vehicle has already driven. The single most important corridor regression: proximity to the historical route must never make a ride look compatible.",
+  build: () => {
+    // D_BEHIND is mid-trip, running east. Its rider is aboard, so the only
+    // remaining stop is the drop further east — everything west of the driver
+    // is history. D_AHEAD runs the same corridor but has not reached the
+    // pickup yet, so it must still match: the preset would prove nothing if
+    // the pickup were simply unreachable for everyone.
+    const rides = [
+      makeRide("R_BEHIND", "D_BEHIND", [
+        {
+          id: "S_BEHIND_D",
+          passengerId: "P_ABOARD",
+          type: "DROP",
+          location: offsetBy(CP, 14, 90),
+          originalEtaMin: 0,
+        },
+      ]),
+      makeRide("R_AHEAD", "D_AHEAD", [
+        {
+          id: "S_AHEAD_D",
+          passengerId: "P_ABOARD_2",
+          type: "DROP",
+          location: offsetBy(CP, 14, 90),
+          originalEtaMin: 0,
+        },
+      ]),
+    ];
+
+    const drivers = attachRide(
+      [
+        // Already 8 km east. The pickup at 2 km east is 6 km behind it, well
+        // past what ring expansion plus corridor padding can reach, so stage 2
+        // is the stage that must reject it. A smaller gap is still rejected,
+        // but by stage 3's exact geometry, which would make this preset
+        // demonstrate the wrong thing.
+        makeDriver({
+          id: "D_BEHIND",
+          location: offsetBy(CP, 8, 90),
+          vehicleId: FLEET.cab4.id,
+        }),
+        // Only 1 km east; the same pickup is still ahead of it.
+        makeDriver({
+          id: "D_AHEAD",
+          location: offsetBy(CP, 1, 90),
+          vehicleId: FLEET.cab4.id,
+        }),
+      ],
+      rides,
+    );
+
+    return makeScenario({
+      id: "sc_behind",
+      name: "Corridor Behind Vehicle",
+      drivers,
+      rides,
+      passengers: [
+        makePassenger({ id: "P_ABOARD", name: "Meera", state: "IN_RIDE" }),
+        makePassenger({ id: "P_ABOARD_2", name: "Vikram", state: "IN_RIDE" }),
+        makePassenger({ id: "P_NEW", name: "Arjun" }),
+      ],
+      requests: [
+        makeRequest({
+          id: "R_BEHIND_REQ",
+          passengerId: "P_NEW",
+          pickup: offsetBy(CP, 2, 90),
+          drop: offsetBy(CP, 8, 90),
+        }),
+      ],
+      settings: { h3Resolution: 8, maxH3Ring: 3 },
+    });
+  },
+};
+
 const noDriverAvailable: ScenarioPreset = {
   id: "no-driver-available",
   name: "No Driver Available",
@@ -458,6 +535,7 @@ export const SCENARIO_PRESETS: ScenarioPreset[] = [
   routeDetourTest,
   sparseDriverArea,
   denseDriverArea,
+  corridorBehindVehicle,
   noDriverAvailable,
   mixedVehicleFleet,
   largePoolingScenario,
