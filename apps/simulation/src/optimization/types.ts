@@ -57,8 +57,12 @@ export interface OptimizeToursRequest {
   /**
    * Visits, in order, that the solver must keep frozen at the head of the
    * route. Everything after `lockedVisits.length` is free to reorder.
+   *
+   * `startMin` is minutes from now for the injected visit timestamp. The
+   * proxy requires non-decreasing times on the wire; when omitted it
+   * staggers by index.
    */
-  lockedVisits: { shipmentId: string; type: "PICKUP" | "DROP" }[];
+  lockedVisits: { shipmentId: string; type: "PICKUP" | "DROP"; startMin?: number }[];
   timeoutMs: number;
 }
 

@@ -19,11 +19,22 @@ export interface ProxyShipment {
   softDeadlineCostPerHour?: number;
 }
 
+export interface ProxyLockedVisit {
+  shipmentId: string;
+  type: "PICKUP" | "DROP";
+  /**
+   * Minutes from `now` for this visit's injected `startTime`. Google requires
+   * non-decreasing times on an injected route (`vehicleStartTime` ≤ visit
+   * start times). When omitted, the proxy staggers visits by index.
+   */
+  startMin?: number;
+}
+
 export interface ProxyRequest {
   vehicleStart: { lat: number; lng: number };
   seatCapacity: number;
   shipments: ProxyShipment[];
-  lockedVisits: { shipmentId: string; type: "PICKUP" | "DROP" }[];
+  lockedVisits: ProxyLockedVisit[];
   timeoutMs: number;
 }
 
@@ -140,9 +151,26 @@ export function toShipmentModel(
     return index;
   }
 
+  const globalStartTime = isoAt(nowMs, 0);
+  // Horizon must clear the latest hard window we emit; otherwise Google can
+  // mark a feasible spine as out-of-horizon after travel times land.
+  let latestDeadlineMin = 120;
+  for (const shipment of request.shipments) {
+    for (const value of [
+      shipment.pickupDeadlineMin,
+      shipment.dropDeadlineMin,
+      shipment.softPickupDeadlineMin,
+    ]) {
+      if (value !== undefined) {
+        latestDeadlineMin = Math.max(latestDeadlineMin, value + 30);
+      }
+    }
+  }
+  const globalEndTime = isoAt(nowMs, latestDeadlineMin);
+
   const model: Record<string, unknown> = {
-    globalStartTime: isoAt(nowMs, 0),
-    globalEndTime: isoAt(nowMs, 120),
+    globalStartTime,
+    globalEndTime,
     vehicles: [
       {
         startWaypoint: {
@@ -159,23 +187,56 @@ export function toShipmentModel(
   const payload: Record<string, unknown> = { timeout: durationFromMs(request.timeoutMs), model };
 
   if (request.lockedVisits.length > 0) {
+    // Injected routes must satisfy the same validity rules as
+    // injectedFirstSolutionRoutes: non-decreasing times from vehicleStartTime
+    // through every visit startTime to vehicleEndTime. Omitting
+    // vehicleStartTime is rejected outright ("missing vehicle_start_time").
+    //
+    // Visit startTimes are seeded from originalEtaMin when provided; otherwise
+    // we stagger by index so equal-zero sketch ETAs still form a valid chain.
+    // Actual travel times are free because we relax visit times from the
+    // vehicle start (see constraintRelaxations below).
+    let lastStartMin = 0;
+    const visits = request.lockedVisits.map((visit, index) => {
+      const raw = visit.startMin ?? index;
+      const startMin = Math.max(raw, lastStartMin);
+      lastStartMin = startMin;
+      return {
+        shipmentIndex: resolveShipmentIndex(visit.shipmentId),
+        isPickup: visit.type === "PICKUP",
+        startTime: isoAt(nowMs, startMin),
+      };
+    });
+
+    const spineLength = request.lockedVisits.length;
+
     payload.injectedSolutionConstraint = {
       routes: [
         {
           vehicleIndex: 0,
-          visits: request.lockedVisits.map((visit) => ({
-            shipmentIndex: resolveShipmentIndex(visit.shipmentId),
-            isPickup: visit.type === "PICKUP",
-          })),
+          vehicleStartTime: globalStartTime,
+          // End is relaxed (RELAX_VISIT_TIMES / RELAX_ALL at vehicle end) but
+          // must still be ≥ the last injected visit for the validity check.
+          vehicleEndTime: isoAt(nowMs, Math.max(lastStartMin, latestDeadlineMin)),
+          visits,
         },
       ],
       constraintRelaxations: [
         {
           vehicleIndices: [0],
           relaxations: [
+            // Free all injected start times so zero/rough ETAs cannot make the
+            // locked spine travel-infeasible while its sequence stays fixed.
+            {
+              level: "RELAX_VISIT_TIMES_AFTER_THRESHOLD",
+              thresholdVisitCount: 0,
+            },
+            // Allow new visits only after the locked spine. threshold = N+1
+            // targets the vehicle end (docs: route.visits_size()+1), not the
+            // last locked visit — using N accidentally RELAX_ALL'd that visit.
             {
               level: "RELAX_ALL_AFTER_THRESHOLD",
-              thresholdVisitCount: request.lockedVisits.length,
+              thresholdVisitCount: spineLength + 1,
             },
           ],
         },
@@ -203,6 +264,35 @@ function send(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
   res.setHeader("content-type", "application/json");
   res.end(JSON.stringify(body));
+}
+
+/**
+ * Prefer Google's validation message over the generic Gaxios wrapper text so
+ * the UI shows e.g. "missing vehicle_start_time" instead of only HTTP 400.
+ */
+function formatUpstreamError(error: unknown): string {
+  if (error && typeof error === "object") {
+    const withResponse = error as {
+      response?: { data?: unknown };
+      message?: string;
+    };
+    const data = withResponse.response?.data;
+    if (data && typeof data === "object") {
+      const googleError = data as {
+        error?: { message?: string; status?: string };
+        message?: string;
+      };
+      const nested = googleError.error?.message ?? googleError.message;
+      if (typeof nested === "string" && nested.length > 0) {
+        return nested;
+      }
+    }
+    if (typeof withResponse.message === "string" && withResponse.message.length > 0) {
+      return withResponse.message;
+    }
+  }
+
+  return error instanceof Error ? error.message : "optimizeTours call failed";
 }
 
 /**
@@ -287,8 +377,7 @@ export function optimizerProxyPlugin(): Plugin {
 
             send(res, 200, response.data);
           } catch (error) {
-            const message = error instanceof Error ? error.message : "optimizeTours call failed";
-            send(res, 502, { error: message });
+            send(res, 502, { error: formatUpstreamError(error) });
           }
         })();
       });

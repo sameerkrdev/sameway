@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
 import type { LatLng, Ride, Scenario } from "@/domain/entities";
+import { rideToWaypoints } from "@/lib/ridePath";
 import type { DriverEvaluation } from "@/matching/types";
 
 import { usePolyline } from "./useMapPrimitives";
@@ -10,13 +11,7 @@ const COVERED_ROUTE_COLOR = "#64748b";
 const ORIGINAL_ROUTE_COLOR = "#64748b";
 const PROPOSED_ROUTE_COLOR = "#22c55e";
 const REJECTED_ROUTE_COLOR = "#ef4444";
-
-function rideToPath(scenario: Scenario, ride: Ride): LatLng[] {
-  const driver = scenario.drivers.find((entry) => entry.id === ride.driverId);
-  const stops = [...ride.stops].sort((a, b) => a.sequence - b.sequence);
-  const path = stops.map((stop) => stop.location);
-  return driver ? [driver.location, ...path] : path;
-}
+const SELECTED_ROAD_COLOR = "#3b82f6";
 
 /** Already-driven trail behind the vehicle. */
 function CoveredRoute({ path, dimmed }: { path: LatLng[]; dimmed: boolean }) {
@@ -34,16 +29,24 @@ function CoveredRoute({ path, dimmed }: { path: LatLng[]; dimmed: boolean }) {
   return null;
 }
 
-/** One driver's committed remaining route, drawn faintly for context. */
-function CommittedRoute({ path, dimmed }: { path: LatLng[]; dimmed: boolean }) {
+/** One driver's committed remaining route. */
+function CommittedRoute({
+  path,
+  dimmed,
+  emphasized,
+}: {
+  path: LatLng[];
+  dimmed: boolean;
+  emphasized?: boolean;
+}) {
   usePolyline(
     path.length >= 2
       ? {
           path,
-          color: COMMITTED_ROUTE_COLOR,
-          weight: 2,
-          opacity: dimmed ? 0.18 : 0.45,
-          zIndex: 1,
+          color: emphasized ? SELECTED_ROAD_COLOR : COMMITTED_ROUTE_COLOR,
+          weight: emphasized ? 5 : 2,
+          opacity: dimmed ? 0.18 : emphasized ? 0.9 : 0.45,
+          zIndex: emphasized ? 4 : 1,
         }
       : null,
   );
@@ -92,38 +95,60 @@ export function RouteLayer({
   showAllRoutes,
   selectedDriverId,
   selectedEvaluation,
+  selectedRoadPath,
+  selectedRoadIsRoad,
   visibleDriverIds,
 }: {
   scenario: Scenario;
   showAllRoutes: boolean;
   selectedDriverId: string | null;
   selectedEvaluation: DriverEvaluation | undefined;
+  /** Google (or fallback) polyline for the selected driver's committed ride. */
+  selectedRoadPath: LatLng[];
+  selectedRoadIsRoad: boolean;
   visibleDriverIds: Set<string> | null;
 }) {
   const committedRoutes = useMemo(() => {
+    const pathFor = (ride: Ride, isSelected: boolean): LatLng[] => {
+      if (isSelected && selectedRoadPath.length >= 2) {
+        return selectedRoadPath;
+      }
+      return rideToWaypoints(scenario, ride);
+    };
+
     if (!showAllRoutes) {
-      // Drawing every committed route for 200 rides is unreadable and slow, so
-      // by default only the selected driver's route is shown.
       const ride = scenario.rides.find((entry) => entry.driverId === selectedDriverId);
       return ride
         ? [
             {
               id: ride.id,
-              path: rideToPath(scenario, ride),
+              path: pathFor(ride, true),
               coveredPath: ride.coveredPath ?? [],
               dimmed: false,
+              emphasized: selectedRoadIsRoad,
             },
           ]
         : [];
     }
 
-    return scenario.rides.map((ride) => ({
-      id: ride.id,
-      path: rideToPath(scenario, ride),
-      coveredPath: ride.coveredPath ?? [],
-      dimmed: visibleDriverIds !== null && !visibleDriverIds.has(ride.driverId),
-    }));
-  }, [scenario, showAllRoutes, selectedDriverId, visibleDriverIds]);
+    return scenario.rides.map((ride) => {
+      const isSelected = ride.driverId === selectedDriverId;
+      return {
+        id: ride.id,
+        path: pathFor(ride, isSelected),
+        coveredPath: ride.coveredPath ?? [],
+        dimmed: visibleDriverIds !== null && !visibleDriverIds.has(ride.driverId),
+        emphasized: isSelected && selectedRoadIsRoad,
+      };
+    });
+  }, [
+    scenario,
+    showAllRoutes,
+    selectedDriverId,
+    selectedRoadPath,
+    selectedRoadIsRoad,
+    visibleDriverIds,
+  ]);
 
   const insertion = selectedEvaluation?.insertion;
 
@@ -132,7 +157,7 @@ export function RouteLayer({
       {committedRoutes.map((route) => (
         <span key={route.id}>
           <CoveredRoute path={route.coveredPath} dimmed={route.dimmed} />
-          <CommittedRoute path={route.path} dimmed={route.dimmed} />
+          <CommittedRoute path={route.path} dimmed={route.dimmed} emphasized={route.emphasized} />
         </span>
       ))}
       <SelectedRoute

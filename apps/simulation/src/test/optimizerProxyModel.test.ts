@@ -120,11 +120,46 @@ describe("OptimizeTours wire format", () => {
     const payload = toShipmentModel(request, NOW_MS);
     const constraint = payload.injectedSolutionConstraint as Record<string, unknown>;
     const routes = constraint.routes as Record<string, unknown>[];
+    const route = routes[0]!;
 
-    expect((routes[0]!.visits as unknown[])).toEqual([
-      { shipmentIndex: 0, isPickup: true },
-      { shipmentIndex: 0, isPickup: false },
+    expect(route.vehicleStartTime).toBe("2026-08-23T14:23:45Z");
+    expect(route.vehicleEndTime).toBe("2026-08-23T16:23:45Z");
+    expect(route.visits).toEqual([
+      { shipmentIndex: 0, isPickup: true, startTime: "2026-08-23T14:23:45Z" },
+      { shipmentIndex: 0, isPickup: false, startTime: "2026-08-23T14:24:45Z" },
     ]);
+  });
+
+  it("emits dual relaxations: free times from start, append-only after the spine", () => {
+    const payload = toShipmentModel(request, NOW_MS);
+    const constraint = payload.injectedSolutionConstraint as Record<string, unknown>;
+    const groups = constraint.constraintRelaxations as Record<string, unknown>[];
+    const relaxations = groups[0]!.relaxations as Record<string, unknown>[];
+
+    expect(relaxations).toEqual([
+      { level: "RELAX_VISIT_TIMES_AFTER_THRESHOLD", thresholdVisitCount: 0 },
+      { level: "RELAX_ALL_AFTER_THRESHOLD", thresholdVisitCount: 3 },
+    ]);
+  });
+
+  it("uses startMin when provided and keeps times non-decreasing", () => {
+    const payload = toShipmentModel(
+      {
+        ...request,
+        lockedVisits: [
+          { shipmentId: "ship_pA", type: "PICKUP", startMin: 4 },
+          { shipmentId: "ship_pA", type: "DROP", startMin: 2 },
+        ],
+      },
+      NOW_MS,
+    );
+    const constraint = payload.injectedSolutionConstraint as Record<string, unknown>;
+    const routes = constraint.routes as Record<string, unknown>[];
+    const visits = routes[0]!.visits as { startTime: string }[];
+
+    // Second visit's startMin=2 is clamped up to 4 so the chain stays valid.
+    expect(visits[0]!.startTime).toBe("2026-08-23T14:27:45Z");
+    expect(visits[1]!.startTime).toBe("2026-08-23T14:27:45Z");
   });
 
   it("rejects a locked visit naming a shipment that is not in the model", () => {

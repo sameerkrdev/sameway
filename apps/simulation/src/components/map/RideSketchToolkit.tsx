@@ -16,14 +16,10 @@ import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  buildMultiRideSketchCommit,
-  sketchVehicleOptions,
-  validateMultiRideSketch,
-} from "@/lib/rideSketch";
+import { applyCurrentRideSketch } from "@/lib/applyRideSketch";
+import { sketchVehicleOptions, validateMultiRideSketch } from "@/lib/rideSketch";
 import { cn } from "@/lib/utils";
 import { DRIVER_STATUSES } from "@/domain/entities";
-import { useMatchingStore } from "@/stores/matchingStore";
 import { useMapStore } from "@/stores/mapStore";
 import { useRideSketchStore, type SketchTool } from "@/stores/rideSketchStore";
 import { useScenarioStore } from "@/stores/scenarioStore";
@@ -59,12 +55,6 @@ const TOOLS: { id: SketchTool; label: string; hint: string; icon: typeof Navigat
 
 export function RideSketchToolkit() {
   const scenario = useScenarioStore((state) => state.scenario);
-  const upsertDriver = useScenarioStore((state) => state.upsertDriver);
-  const upsertVehicle = useScenarioStore((state) => state.upsertVehicle);
-  const upsertPassenger = useScenarioStore((state) => state.upsertPassenger);
-  const upsertRide = useScenarioStore((state) => state.upsertRide);
-  const upsertRequest = useScenarioStore((state) => state.upsertRequest);
-  const selectDriver = useMatchingStore((state) => state.selectDriver);
   const resetMode = useMapStore((state) => state.resetMode);
 
   const slots = useRideSketchStore((state) => state.slots);
@@ -116,47 +106,16 @@ export function RideSketchToolkit() {
   });
 
   function applyAll() {
-    const state = useRideSketchStore.getState();
-    const commit = buildMultiRideSketchCommit(
-      state.slots,
-      {
-        requestPickup: state.requestPickup,
-        requestDrop: state.requestDrop,
-        requestPassengerId: state.requestPassengerId,
-      },
-      state.pendingPassengers,
-      scenario,
-    );
-    if ("error" in commit) {
-      setApplyError(commit.error);
+    const result = applyCurrentRideSketch({ discardAfter: true, exitSketchMode: true });
+    if (result.status === "error") {
+      setApplyError(result.error);
       return;
     }
-
-    const createdVehicleIds = new Set<string>();
-    for (const rideCommit of commit.rides) {
-      if (rideCommit.vehicleToCreate && !createdVehicleIds.has(rideCommit.vehicleToCreate.id)) {
-        upsertVehicle(rideCommit.vehicleToCreate);
-        createdVehicleIds.add(rideCommit.vehicleToCreate.id);
-      }
-      upsertDriver(rideCommit.driver);
-      if (rideCommit.ride) {
-        upsertRide(rideCommit.ride);
-      }
-    }
-    for (const passenger of commit.sharedPassengers) {
-      upsertPassenger(passenger);
-    }
-    if (commit.request) {
-      upsertRequest(commit.request);
-    }
-
-    const firstDriver = commit.rides[0]?.driver.id;
-    if (firstDriver) {
-      selectDriver(firstDriver);
+    if (result.status === "skipped") {
+      setApplyError("Nothing to apply yet — place a vehicle or set a request first.");
+      return;
     }
     setApplyError(null);
-    discard();
-    resetMode();
   }
 
   if (!active) {
@@ -495,13 +454,16 @@ export function RideSketchToolkit() {
           size="sm"
           variant="outline"
           onClick={() => {
-            discard();
+            discard(scenario);
             setApplyError(null);
           }}
         >
           <Trash2 className="size-3.5" /> Discard
         </Button>
       </div>
+      <p className="text-[10px] text-[var(--muted-foreground)]">
+        Tip: <strong>Run matching</strong> also applies this sketch automatically before the run.
+      </p>
     </div>
   );
 }

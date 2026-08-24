@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 
+import { applyCurrentRideSketch } from "@/lib/applyRideSketch";
 import { localMatchingService } from "@/services/LocalMatchingService";
 import { createGoogleRoutesEngine } from "@/routing/googleEngineFactory";
 import { useMatchingStore } from "@/stores/matchingStore";
@@ -10,21 +11,39 @@ import { useSettingsStore } from "@/stores/settingsStore";
 /**
  * Bridges the stores to the matching service.
  *
- * Stores never import one another; this hook is where the scenario, the
- * settings and the result stores meet.
+ * If a Ride sketch session has unsaved drivers / rides / request, it is
+ * applied into the scenario first so Run matching always sees the sketched
+ * world — not a stale blank or preset scene.
  */
 export function useRunMatching(): { run: () => Promise<void>; isRunning: boolean } {
   const isRunning = useMatchingStore((state) => state.isRunning);
 
   const run = useCallback(async () => {
+    const matchingStore = useMatchingStore.getState();
+
+    const applyResult = applyCurrentRideSketch({ discardAfter: true, exitSketchMode: true });
+    if (applyResult.status === "error") {
+      matchingStore.failRun(applyResult.error);
+      return;
+    }
+
     const { scenario } = useScenarioStore.getState();
     const { settings } = useSettingsStore.getState();
     const request = scenario.requests[0];
 
-    const matchingStore = useMatchingStore.getState();
-
     if (!request) {
-      matchingStore.failRun("Add a ride request before running the matcher.");
+      matchingStore.failRun(
+        applyResult.status === "applied"
+          ? "Sketch applied, but there is no ride request. Set Req pick, Req drop, and a request passenger in Ride sketch, then run again."
+          : "Add a ride request (Ride sketch → Req pick/drop) before running the matcher.",
+      );
+      return;
+    }
+
+    if (scenario.drivers.length === 0) {
+      matchingStore.failRun(
+        "No drivers in the scene. Create drivers in Ride sketch (place vehicle), then run again.",
+      );
       return;
     }
 

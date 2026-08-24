@@ -82,7 +82,7 @@ function DriverRow({
           {driver.currentRideId ? ` · ride ${driver.currentRideId}` : " · idle"}
         </p>
         <p className="font-mono text-[10px] text-[var(--muted-foreground)]">
-          {formatCoordinate(driver.location)}
+          {formatCoordinate(driver.location.lat)}, {formatCoordinate(driver.location.lng)}
         </p>
       </button>
       <div className="mt-1.5 flex gap-1">
@@ -295,10 +295,10 @@ export function RequestInventory() {
         {request.poolingAllowed ? " · pooling" : " · solo"}
       </p>
       <p className="mt-1 font-mono text-[10px] text-[var(--muted-foreground)]">
-        P {formatCoordinate(request.pickup)}
+        P {formatCoordinate(request.pickup.lat)}, {formatCoordinate(request.pickup.lng)}
       </p>
       <p className="font-mono text-[10px] text-[var(--muted-foreground)]">
-        D {formatCoordinate(request.drop)}
+        D {formatCoordinate(request.drop.lat)}, {formatCoordinate(request.drop.lng)}
       </p>
       <div className="mt-1.5 flex gap-1">
         <Button

@@ -21,6 +21,7 @@ import { RideSketchLayer } from "./RideSketchLayer";
 import { RideSketchToolkit } from "./RideSketchToolkit";
 import { RouteLayer } from "./RouteLayer";
 import { useFitBounds } from "./useMapPrimitives";
+import { useSelectedRideRoadPath } from "@/hooks/useSelectedRideRoadPath";
 
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? "";
 const MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID ?? "DEMO_MAP_ID";
@@ -82,6 +83,11 @@ function MapSurface() {
   const selectedRide = useMemo(
     () => scenario.rides.find((ride) => ride.driverId === selectedDriverId),
     [scenario.rides, selectedDriverId],
+  );
+
+  const selectedRoad = useSelectedRideRoadPath(
+    scenario,
+    isSketching ? null : selectedDriverId,
   );
 
   const handleMapClick = useCallback(
@@ -204,6 +210,8 @@ function MapSurface() {
           showAllRoutes={showAllRoutes}
           selectedDriverId={isSketching ? null : selectedDriverId}
           selectedEvaluation={isSketching ? undefined : selectedEvaluation}
+          selectedRoadPath={selectedRoad.path}
+          selectedRoadIsRoad={selectedRoad.isRoad}
           visibleDriverIds={survivingDriverIds}
         />
 
@@ -304,6 +312,15 @@ function MapSurface() {
         {overBudget ? (
           <p className="max-w-48 text-[11px] text-[var(--warn)]">
             Showing {MARKER_BUDGET} of {visibleDrivers.length} drivers to keep the map responsive.
+          </p>
+        ) : null}
+        {!isSketching && selectedRide && selectedRoad.path.length >= 2 ? (
+          <p className="max-w-48 text-[11px] text-[var(--muted-foreground)]">
+            {selectedRoad.loading
+              ? "Loading Google road route…"
+              : selectedRoad.isRoad
+                ? "Showing Google road route for selection"
+                : "Straight-line route (road fetch unavailable)"}
           </p>
         ) : null}
         {inspectedCell ? (

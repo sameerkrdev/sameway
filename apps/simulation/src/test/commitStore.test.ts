@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { CommitPlan } from "@/matching/types";
+import { getPreset } from "@/scenarios/presets";
 import { useScenarioStore } from "@/stores/scenarioStore";
 
 const plan: CommitPlan = {
@@ -13,7 +14,11 @@ const plan: CommitPlan = {
 
 describe("scenarioStore commit", () => {
   beforeEach(() => {
-    useScenarioStore.getState().resetScenario();
+    const preset = getPreset("simple-single-ride");
+    if (!preset) {
+      throw new Error("simple-single-ride preset missing");
+    }
+    useScenarioStore.getState().setScenario(preset.build());
   });
 
   it("creates a ride for an idle driver and adds the passenger", () => {

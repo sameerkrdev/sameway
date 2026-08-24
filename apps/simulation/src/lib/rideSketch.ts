@@ -9,6 +9,7 @@ import type {
   Vehicle,
 } from "@/domain/entities";
 import { createId } from "@/lib/ids";
+import { mockLeg } from "@/routing/MockRoutingEngine";
 import {
   DEFAULT_FLEET,
   FLEET,
@@ -322,13 +323,22 @@ export function buildRideSketchCommit(
     );
 
   const rideId = draft.rideId ?? createId("ride");
-  const stops: Omit<Stop, "rideId" | "sequence">[] = draft.stops.map((stop, index) => ({
-    id: stop.id || `${rideId}_S${index + 1}`,
-    passengerId: stop.passengerId,
-    type: stop.type,
-    location: stop.location,
-    originalEtaMin: 0,
-  }));
+  let cumulativeMin = 0;
+  let previous = vehicleLocation;
+  const stops: Omit<Stop, "rideId" | "sequence">[] = draft.stops.map((stop, index) => {
+    cumulativeMin += mockLeg(previous, stop.location).durationMin;
+    previous = stop.location;
+    return {
+      id: stop.id || `${rideId}_S${index + 1}`,
+      passengerId: stop.passengerId,
+      type: stop.type,
+      location: stop.location,
+      // Promised ETA from the vehicle's current position — same contract as
+      // makeScenario. Zero ETAs make Google hard windows infeasible the moment
+      // real road times are fetched.
+      originalEtaMin: cumulativeMin,
+    };
+  });
 
   const covered =
     draft.coveredPath.length > 0

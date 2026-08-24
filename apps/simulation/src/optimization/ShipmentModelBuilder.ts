@@ -1,4 +1,5 @@
 import type { LatLng, Passenger, RideRequest } from "@/domain/entities";
+import { mockLeg } from "@/routing/MockRoutingEngine";
 
 import type { OptimizerShipment, OptimizeToursRequest } from "./types";
 
@@ -12,6 +13,14 @@ import type { OptimizerShipment, OptimizeToursRequest } from "./types";
  * `skippedShipments[]` entry instead of a failed request.
  */
 const NEW_PASSENGER_PENALTY_COST = 1000;
+
+/**
+ * Google's road+traffic times routinely exceed our mock legs. Hard visit
+ * windows on the wire must clear that gap, or OptimizeTours rejects the
+ * injected spine as infeasible after fetching travel times
+ * (`INVALID_REQUEST_AFTER_GETTING_TRAVEL_TIMES`).
+ */
+const GOOGLE_TRAVEL_SLACK = 2;
 
 /** A committed stop, carrying the promise stage 6 and 10 protect. */
 export interface CommittedStopInput {
@@ -42,6 +51,32 @@ export function shipmentIdFor(passengerId: string): string {
 }
 
 /**
+ * Lower-bound arrival minutes for each committed stop, using a slack'd mock
+ * leg so hard Google windows stay reachable under real road times.
+ */
+function travelFloorsAlongSpine(
+  vehicleStart: LatLng,
+  committedStops: readonly CommittedStopInput[],
+): { pickup: Map<string, number>; drop: Map<string, number> } {
+  const pickup = new Map<string, number>();
+  const drop = new Map<string, number>();
+  let cumulativeMin = 0;
+  let previous = vehicleStart;
+
+  for (const stop of committedStops) {
+    cumulativeMin += mockLeg(previous, stop.location).durationMin * GOOGLE_TRAVEL_SLACK;
+    previous = stop.location;
+    if (stop.type === "PICKUP") {
+      pickup.set(stop.passengerId, cumulativeMin);
+    } else {
+      drop.set(stop.passengerId, cumulativeMin);
+    }
+  }
+
+  return { pickup, drop };
+}
+
+/**
  * Turns a driver's committed route plus one new request into a solver model.
  *
  * The committed spine goes in twice — once as mandatory shipments with hard
@@ -53,19 +88,22 @@ export function shipmentIdFor(passengerId: string): string {
  *
  * UNRESOLVED — `lockedVisits` is stronger than that description.
  *
- * The proxy maps it to `RELAX_ALL_AFTER_THRESHOLD` at
- * `thresholdVisitCount = lockedVisits.length`, which pins the committed stops
- * to the *head* of the route, not merely to their order among themselves. The
- * new rider can therefore only ever be appended after every committed stop.
+ * The proxy maps it to two relaxations on the injected route:
+ *   1. `RELAX_VISIT_TIMES_AFTER_THRESHOLD` at `thresholdVisitCount = 0` so
+ *      rough / zero ETAs cannot make the spine travel-infeasible.
+ *   2. `RELAX_ALL_AFTER_THRESHOLD` at `thresholdVisitCount = spineLength + 1`
+ *      so only the vehicle end (and anything after the locked visits) is
+ *      free — new stops may only be appended after the committed spine.
  *
- * That contradicts the Overview's flexible-commitment policy, which allows
- * inserting ahead of a committed pickup whenever that passenger's own
+ * That still contradicts the Overview's flexible-commitment policy, which
+ * allows inserting ahead of a committed pickup whenever that passenger's own
  * `maxPickupDelayMin` absorbs the delay — and it is the reason stages 5 and 6
  * enumerate and filter orderings at all. It also has two live consequences:
  * a rider can never be collected on the way to an existing rider's drop, which
- * is the most common pooling case; and committed arrivals never move, so
- * existing-passenger delay is structurally zero and the 30% existing-passenger
- * term in stage 11's fairness score is always zero with it.
+ * is the most common pooling case; and committed arrivals never move relative
+ * to each other in sequence, so existing-passenger delay from reordering is
+ * structurally zero and the 30% existing-passenger term in stage 11's fairness
+ * score is always zero with it.
  *
  * Relaxing it to a genuine relative-order constraint is a product decision
  * about how much freedom the solver gets over promises already made, so it is
@@ -99,6 +137,7 @@ export function buildOptimizeToursRequest(
     byPassenger.set(stop.passengerId, entry);
   }
 
+  const travelFloor = travelFloorsAlongSpine(vehicleStart, committedStops);
   const shipments: OptimizerShipment[] = [];
 
   for (const [passengerId, stops] of byPassenger) {
@@ -110,6 +149,8 @@ export function buildOptimizeToursRequest(
       continue;
     }
 
+    const dropFloor = Math.max(drop.originalEtaMin, travelFloor.drop.get(passengerId) ?? 0);
+
     const shipment: OptimizerShipment = {
       id: shipmentIdFor(passengerId),
       passengerId,
@@ -119,12 +160,16 @@ export function buildOptimizeToursRequest(
       pickup: stops.pickup?.location ?? vehicleStart,
       drop: drop.location,
       seats: passenger.seatsRequired,
-      dropDeadlineMin: drop.originalEtaMin + passenger.maxDropDelayMin,
+      dropDeadlineMin: dropFloor + passenger.maxDropDelayMin,
       penaltyCost: null,
     };
 
     if (stops.pickup) {
-      shipment.pickupDeadlineMin = stops.pickup.originalEtaMin + passenger.maxPickupDelayMin;
+      const pickupFloor = Math.max(
+        stops.pickup.originalEtaMin,
+        travelFloor.pickup.get(passengerId) ?? 0,
+      );
+      shipment.pickupDeadlineMin = pickupFloor + passenger.maxPickupDelayMin;
     }
 
     shipments.push(shipment);
@@ -141,10 +186,36 @@ export function buildOptimizeToursRequest(
     softDeadlineCostPerHour,
   });
 
-  const lockedVisits = committedStops.map((stop) => ({
-    shipmentId: shipmentIdFor(stop.passengerId),
-    type: stop.type,
-  }));
+  // Onboard passengers need a synthetic pickup at the vehicle start so Google
+  // sees pickup-before-delivery. All of those pickups must lead the lock —
+  // inserting one just before each drop would force a phantom return to the
+  // vehicle start between drops and make the injected route travel-infeasible.
+  const lockedVisits: OptimizeToursRequest["lockedVisits"] = [];
+  const syntheticPickupOrder: string[] = [];
+  const syntheticSeen = new Set<string>();
+
+  for (const stop of committedStops) {
+    if (
+      stop.type === "DROP" &&
+      !byPassenger.get(stop.passengerId)?.pickup &&
+      !syntheticSeen.has(stop.passengerId)
+    ) {
+      syntheticPickupOrder.push(stop.passengerId);
+      syntheticSeen.add(stop.passengerId);
+    }
+  }
+
+  for (const passengerId of syntheticPickupOrder) {
+    lockedVisits.push({ shipmentId: shipmentIdFor(passengerId), type: "PICKUP", startMin: 0 });
+  }
+
+  for (const stop of committedStops) {
+    lockedVisits.push({
+      shipmentId: shipmentIdFor(stop.passengerId),
+      type: stop.type,
+      startMin: stop.originalEtaMin,
+    });
+  }
 
   return {
     driverId,

@@ -7,13 +7,15 @@ import { StageDetails } from "@/components/debug/StageDetails";
 import { StagePipeline } from "@/components/debug/StagePipeline";
 import { MapView } from "@/components/map/MapView";
 import { MatchingResults } from "@/components/results/MatchingResults";
-import { DriverForm } from "@/components/scenario/DriverForm";
-import { PassengerForm } from "@/components/scenario/PassengerForm";
-import { RequestForm } from "@/components/scenario/RequestForm";
-import { RideForm } from "@/components/scenario/RideForm";
 import { ScenarioPanel } from "@/components/scenario/ScenarioPanel";
 import { SettingsPanel } from "@/components/scenario/SettingsPanel";
-import { VehicleForm } from "@/components/scenario/VehicleForm";
+import {
+  DriversInventory,
+  PassengersInventory,
+  RequestInventory,
+  RidesInventory,
+  VehiclesInventory,
+} from "@/components/scenario/WorldInventory";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -69,9 +71,9 @@ export function AppShell() {
           <aside className="flex w-80 shrink-0 flex-col border-r border-[var(--border)]">
             <ScrollArea className="h-full">
               <div className="p-3">
-                <Accordion type="multiple" defaultValue={["scenario", "request"]}>
+                <Accordion type="multiple" defaultValue={["scenario", "drivers", "settings"]}>
                   <AccordionItem value="scenario">
-                    <AccordionTrigger>Scenario</AccordionTrigger>
+                    <AccordionTrigger>Scenes</AccordionTrigger>
                     <AccordionContent>
                       <ScenarioPanel />
                     </AccordionContent>
@@ -80,35 +82,35 @@ export function AppShell() {
                   <AccordionItem value="drivers">
                     <AccordionTrigger>Drivers</AccordionTrigger>
                     <AccordionContent>
-                      <DriverForm />
+                      <DriversInventory />
                     </AccordionContent>
                   </AccordionItem>
 
                   <AccordionItem value="vehicles">
                     <AccordionTrigger>Vehicles</AccordionTrigger>
                     <AccordionContent>
-                      <VehicleForm />
+                      <VehiclesInventory />
                     </AccordionContent>
                   </AccordionItem>
 
                   <AccordionItem value="passengers">
                     <AccordionTrigger>Passengers</AccordionTrigger>
                     <AccordionContent>
-                      <PassengerForm />
+                      <PassengersInventory />
                     </AccordionContent>
                   </AccordionItem>
 
                   <AccordionItem value="rides">
                     <AccordionTrigger>Existing rides</AccordionTrigger>
                     <AccordionContent>
-                      <RideForm />
+                      <RidesInventory />
                     </AccordionContent>
                   </AccordionItem>
 
                   <AccordionItem value="request">
                     <AccordionTrigger>New ride request</AccordionTrigger>
                     <AccordionContent>
-                      <RequestForm />
+                      <RequestInventory />
                     </AccordionContent>
                   </AccordionItem>
 

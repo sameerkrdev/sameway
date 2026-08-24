@@ -1,4 +1,4 @@
-import { Copy, Dices, Download, RotateCcw, Upload } from "lucide-react";
+import { Copy, Dices, Download, FilePlus2, RotateCcw, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { Metric } from "@/components/shared/StatusIcon";
@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { createBlankScenario } from "@/scenarios/builders";
 import { generateScenario } from "@/scenarios/randomGenerator";
 import { SCENARIO_PRESETS } from "@/scenarios/presets";
 import {
@@ -22,6 +23,7 @@ import {
   importScenarioJson,
 } from "@/scenarios/serialize";
 import { useMatchingStore } from "@/stores/matchingStore";
+import { useRideSketchStore } from "@/stores/rideSketchStore";
 import { useScenarioStore } from "@/stores/scenarioStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 
@@ -29,9 +31,10 @@ export function ScenarioPanel() {
   const scenario = useScenarioStore((state) => state.scenario);
   const setScenario = useScenarioStore((state) => state.setScenario);
   const renameScenario = useScenarioStore((state) => state.renameScenario);
-  const resetScenario = useScenarioStore((state) => state.resetScenario);
   const replaceSettings = useSettingsStore((state) => state.replaceAll);
+  const resetSettings = useSettingsStore((state) => state.reset);
   const clearResults = useMatchingStore((state) => state.clear);
+  const discardSketch = useRideSketchStore((state) => state.discard);
 
   const fileInput = useRef<HTMLInputElement>(null);
   const [importErrors, setImportErrors] = useState<string[]>([]);
@@ -42,19 +45,38 @@ export function ScenarioPanel() {
     // Settings travel with the scenario so a shared repro reproduces exactly.
     replaceSettings(next.settings);
     clearResults();
+    discardSketch(next);
+    setImportErrors([]);
+  };
+
+  const loadBlank = () => {
+    const blank = createBlankScenario();
+    setScenario(blank);
+    resetSettings();
+    clearResults();
+    discardSketch(blank);
     setImportErrors([]);
   };
 
   return (
     <div className="flex flex-col gap-3">
+      <p className="text-[11px] text-[var(--muted-foreground)]">
+        Scenes hold the world. Ride sketch on the map creates drivers and rides; this panel loads,
+        exports, and inspects them. Run matching auto-applies an open sketch first.
+      </p>
+
       <div>
-        <Label>Scenario name</Label>
+        <Label>Scene name</Label>
         <Input
           className="h-7"
           value={scenario.name}
           onChange={(event) => renameScenario(event.target.value)}
         />
       </div>
+
+      <Button size="sm" variant="outline" className="w-full justify-start" onClick={loadBlank}>
+        <FilePlus2 /> New blank scene
+      </Button>
 
       <div>
         <Label>Load a preset</Label>
@@ -90,7 +112,7 @@ export function ScenarioPanel() {
       <Separator />
 
       <div>
-        <Label>Generate a random scenario</Label>
+        <Label>Generate a random scene</Label>
         <div className="mt-1 flex items-end gap-2">
           <div className="flex-1">
             <Input
@@ -106,8 +128,7 @@ export function ScenarioPanel() {
           </Button>
         </div>
         <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
-          The same seed always produces the same scenario, so a failure found while stress testing
-          can be reproduced exactly.
+          Same seed → same world. Useful for stress repros.
         </p>
       </div>
 
@@ -123,15 +144,8 @@ export function ScenarioPanel() {
         <Button size="xs" variant="outline" onClick={() => loadScenario(duplicateScenario(scenario))}>
           <Copy /> Duplicate
         </Button>
-        <Button
-          size="xs"
-          variant="outline"
-          onClick={() => {
-            resetScenario();
-            clearResults();
-          }}
-        >
-          <RotateCcw /> Reset
+        <Button size="xs" variant="outline" onClick={loadBlank}>
+          <RotateCcw /> Reset blank
         </Button>
       </div>
 
@@ -150,7 +164,6 @@ export function ScenarioPanel() {
             if (result.ok) {
               loadScenario(result.scenario);
             } else {
-              // A malformed repro must fail loudly rather than half-load.
               setImportErrors(result.errors);
             }
           });
@@ -195,7 +208,7 @@ export function ScenarioStats() {
   return (
     <div>
       <div className="flex items-center justify-between">
-        <h4 className="text-[11px] font-semibold tracking-wide uppercase">Scenario statistics</h4>
+        <h4 className="text-[11px] font-semibold tracking-wide uppercase">Scene statistics</h4>
         {scenario.seed !== undefined ? <Badge variant="outline">seed {scenario.seed}</Badge> : null}
       </div>
       <div className="mt-1">
