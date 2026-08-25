@@ -341,17 +341,11 @@ rejections by reason code.
   score overriding the solver's vehicle-cost winner among several candidate
   sequences — is not something this lab can show. That needs the Phase 3
   in-house insertion search. The scoring panel says so too.
-- **The locked spine is stronger than the Overview intends.** `lockedVisits`
-  maps to `RELAX_ALL_AFTER_THRESHOLD`, which pins committed stops to the *head*
-  of the route rather than merely preserving their order among themselves. The
-  new rider can therefore only ever be appended after every committed stop. Two
-  consequences: a rider can never be collected on the way to an existing rider's
-  drop, which is the commonest pooling case; and committed arrivals never move,
-  so existing-passenger delay is structurally zero and the 30% existing-rider
-  term in the fairness score is always zero with it. Relaxing it is a product
-  decision about how much freedom the solver gets over promises already made.
-  See the note in `src/optimization/ShipmentModelBuilder.ts`; the behaviour is
-  pinned by `incrementalCost.test.ts` so it cannot drift unnoticed.
+- **Committed stop order is preserved, not append-locked.** `committedPrecedence`
+  becomes Google `precedenceRules`, so relative order among promised stops stays
+  fixed while the new rider may be inserted in any gap when delay budgets allow.
+  Stage 7's best sequence is sent as `injectedFirstSolutionRoutes` — a hint, not
+  a hard lock. The legacy `lockedVisits` append-only path remains for tests only.
 - **The optimizer proxy is dev-server only.** `bun run build` produces static
   files with no server behind them, so a built bundle cannot reach stage 8.
   Deliberate: this is a lab tool, not something anyone deploys.

@@ -33,6 +33,14 @@ export class OptimizerCache {
       .map((visit) => `${visit.shipmentId}:${visit.type}`)
       .join(">");
 
+    const precedence = request.committedPrecedence
+      .map((visit) => `${visit.shipmentId}:${visit.type}`)
+      .join(">");
+
+    const hint = (request.firstSolutionVisits ?? [])
+      .map((visit) => `${visit.shipmentId}:${visit.type}`)
+      .join(">");
+
     return [
       request.driverId,
       request.vehicleStart.lat,
@@ -41,6 +49,8 @@ export class OptimizerCache {
       request.timeoutMs,
       shipments,
       locked,
+      precedence,
+      hint,
     ].join("::");
   }
 

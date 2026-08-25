@@ -192,6 +192,11 @@ export const REASONS = {
     label: "Added distance too high",
     outcome: "FAIL",
   },
+  CORRIDOR_EXTENSION_TOO_LONG: {
+    category: "ROUTE",
+    label: "Corridor extension too long",
+    outcome: "FAIL",
+  },
   ADDITIONAL_DURATION_TOO_HIGH: {
     category: "ROUTE",
     label: "Added duration too high",

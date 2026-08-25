@@ -44,6 +44,8 @@ export interface DriverMetrics {
   dropToRouteKm?: number;
   dropProgressKm?: number;
   pickupProgressKm?: number;
+  /** Forward extension past the last committed stop (same-direction pooling). */
+  corridorExtensionKm?: number;
 
   // Operational state
   flexibleStopCount?: number;

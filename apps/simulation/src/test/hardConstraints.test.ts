@@ -50,10 +50,21 @@ class DeadlineBlindOptimizerEngine implements OptimizerEngine {
 const permissive = {
   maxDetourPercent: 10000,
   maxAdditionalDistanceKm: 10000,
+  maxCorridorExtensionKm: 10000,
   maxAdditionalDurationMin: 10000,
   maxExistingPassengerDelayMin: 10000,
   maxNewPassengerPickupDelayMin: 10000,
   maxNewPassengerRideDetourMin: 10000,
+};
+
+const eastboundExtension: MakeContextInput = {
+  driverId: "d1",
+  driverLocation: { lat: 28.6, lng: 77.2 },
+  committedStops: [
+    { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 30, lat: 28.6, lng: 77.4 },
+  ],
+  passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 30, maxDropDelayMin: 30 }],
+  request: { pickup: { lat: 28.6, lng: 77.25 }, drop: { lat: 28.6, lng: 77.5 } },
 };
 
 describe("hardConstraints", () => {
@@ -70,9 +81,26 @@ describe("hardConstraints", () => {
       ...pooled,
       settings: { ...permissive, maxDetourPercent: 0 },
     });
+    context.recordMetrics("d1", { detourPercent: 50, corridorExtensionKm: 0 });
     const outcome = await hardConstraintsStage.execute(context);
 
     expect(outcome.verdicts[0]!.reasons[0]!.code).toBe("ROUTE_DETOUR_TOO_HIGH");
+  });
+
+  it("skips detour percent for a same-direction corridor extension", async () => {
+    const context = await runToIncrementalCost({
+      ...eastboundExtension,
+      settings: {
+        ...permissive,
+        maxDetourPercent: 0,
+        maxAdditionalDistanceKm: 5,
+        maxCorridorExtensionKm: 15,
+      },
+    });
+    const outcome = await hardConstraintsStage.execute(context);
+
+    expect(outcome.verdicts[0]!.status).toBe("PASSED");
+    expect((context.getMetrics("d1").corridorExtensionKm ?? 0)).toBeGreaterThan(5);
   });
 
   it("rejects on the driver's added distance", async () => {
@@ -80,6 +108,7 @@ describe("hardConstraints", () => {
       ...pooled,
       settings: { ...permissive, maxAdditionalDistanceKm: 0 },
     });
+    context.recordMetrics("d1", { additionalDistanceKm: 10, corridorExtensionKm: 0 });
     const outcome = await hardConstraintsStage.execute(context);
 
     expect(outcome.verdicts[0]!.reasons[0]!.code).toBe("ADDITIONAL_DISTANCE_TOO_HIGH");

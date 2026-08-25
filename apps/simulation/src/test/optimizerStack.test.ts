@@ -42,6 +42,7 @@ function request(driverId: string): OptimizeToursRequest {
       },
     ],
     lockedVisits: [],
+    committedPrecedence: [],
     timeoutMs: 400,
   };
 }

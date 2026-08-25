@@ -152,6 +152,93 @@ function toLocalKm(point: LatLng, anchor: LatLng): { x: number; y: number } {
   };
 }
 
+/** Fraction along `a → b` at which `p` projects; may exceed [0, 1] beyond segment ends. */
+function segmentProjectionFractionUnclamped(p: LatLng, a: LatLng, b: LatLng): number {
+  const pa = toLocalKm(p, a);
+  const ba = toLocalKm(b, a);
+  const lengthSquared = ba.x * ba.x + ba.y * ba.y;
+
+  if (lengthSquared === 0) {
+    return 0;
+  }
+
+  return (pa.x * ba.x + pa.y * ba.y) / lengthSquared;
+}
+
+/** Perpendicular distance from `p` to the infinite line through `a → b`. */
+function perpendicularToSegmentKm(p: LatLng, a: LatLng, b: LatLng): number {
+  const pa = toLocalKm(p, a);
+  const ba = toLocalKm(b, a);
+  const length = Math.sqrt(ba.x * ba.x + ba.y * ba.y);
+
+  if (length === 0) {
+    return haversineKm(p, a);
+  }
+
+  return Math.abs(pa.x * ba.y - pa.y * ba.x) / length;
+}
+
+export interface DropRouteClassification {
+  /** Shortest distance to any segment of the polyline. */
+  perpendicularKm: number;
+  /** Distance past the route terminus when the drop extends forward on-axis. */
+  extensionKm: number;
+  /** Lateral offset from the forward ray leaving the last segment. */
+  lateralKm: number;
+  /** Drop continues the corridor in the same direction beyond the last stop. */
+  isAheadExtension: boolean;
+  dropProgressKm: number;
+  routeLengthKm: number;
+}
+
+/**
+ * Classifies how a request drop relates to the driver's remaining-route polyline.
+ *
+ * `pointToPolylineKm` treats a drop 10 km past the last stop as "10 km off
+ * corridor" even when it is colinear and same-direction. Extension pooling needs
+ * that case split into forward extension vs sideways deviation.
+ */
+export function classifyDropRelativeToRoute(
+  drop: LatLng,
+  polyline: readonly LatLng[],
+  maxBearingDifferenceDeg: number,
+): DropRouteClassification {
+  const perpendicularKm = pointToPolylineKm(drop, polyline);
+  const routeLengthKm = pathLengthKm(polyline);
+  const dropProgressKm = projectOnPolylineKm(drop, polyline);
+
+  if (polyline.length < 2) {
+    return {
+      perpendicularKm,
+      extensionKm: 0,
+      lateralKm: perpendicularKm,
+      isAheadExtension: false,
+      dropProgressKm,
+      routeLengthKm,
+    };
+  }
+
+  const a = polyline[polyline.length - 2]!;
+  const b = polyline[polyline.length - 1]!;
+  const forwardBearing = bearingDeg(a, b);
+  const extensionBearing = bearingDeg(b, drop);
+  const bearingOk = bearingDifferenceDeg(forwardBearing, extensionBearing) <= maxBearingDifferenceDeg;
+  const t = segmentProjectionFractionUnclamped(drop, a, b);
+  const beyondTerminus = t >= 1 || dropProgressKm >= routeLengthKm - 0.05;
+  const lateralKm = perpendicularToSegmentKm(drop, a, b);
+  const extensionKm = beyondTerminus && bearingOk ? haversineKm(b, drop) : 0;
+  const isAheadExtension = beyondTerminus && bearingOk && extensionKm > 0.05;
+
+  return {
+    perpendicularKm,
+    extensionKm,
+    lateralKm,
+    isAheadExtension,
+    dropProgressKm,
+    routeLengthKm,
+  };
+}
+
 /** Fraction along `a → b` at which `p` projects, clamped to the segment. */
 function segmentProjectionFraction(p: LatLng, a: LatLng, b: LatLng): number {
   const pa = toLocalKm(p, a);

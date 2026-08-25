@@ -60,20 +60,30 @@ function firstThresholdBreach(
   const metrics = context.getMetrics(driverId);
   const corridor = context.getCorridor(driverId);
   const hasExistingRoute = (corridor?.remainingStops.length ?? 0) > 0;
+  const isCorridorExtension = (metrics.corridorExtensionKm ?? 0) > 0;
+  const distanceCap = isCorridorExtension
+    ? settings.maxCorridorExtensionKm
+    : settings.maxAdditionalDistanceKm;
 
   if (hasExistingRoute) {
-    if ((metrics.detourPercent ?? 0) > settings.maxDetourPercent) {
+    if (!isCorridorExtension && (metrics.detourPercent ?? 0) > settings.maxDetourPercent) {
       return reason("ROUTE_DETOUR_TOO_HIGH", "Route detour exceeds the configured maximum", {
         value: metrics.detourPercent,
         threshold: settings.maxDetourPercent,
       });
     }
 
-    if ((metrics.additionalDistanceKm ?? 0) > settings.maxAdditionalDistanceKm) {
-      return reason("ADDITIONAL_DISTANCE_TOO_HIGH", "Insertion adds too much distance", {
-        value: metrics.additionalDistanceKm,
-        threshold: settings.maxAdditionalDistanceKm,
-      });
+    if ((metrics.additionalDistanceKm ?? 0) > distanceCap) {
+      return reason(
+        isCorridorExtension ? "CORRIDOR_EXTENSION_TOO_LONG" : "ADDITIONAL_DISTANCE_TOO_HIGH",
+        isCorridorExtension
+          ? "Same-direction extension adds too much distance"
+          : "Insertion adds too much distance",
+        {
+          value: metrics.additionalDistanceKm,
+          threshold: distanceCap,
+        },
+      );
     }
 
     if ((metrics.additionalDurationMin ?? 0) > settings.maxAdditionalDurationMin) {

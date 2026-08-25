@@ -1,7 +1,7 @@
 import {
   bearingDeg,
   bearingDifferenceDeg,
-  pointToPolylineKm,
+  classifyDropRelativeToRoute,
   polylineBearingDeg,
   projectOnPolylineKm,
 } from "@/lib/geo";
@@ -54,27 +54,24 @@ export const directionCompatibilityStage: MatchingStage = {
       const difference =
         routeBearing === null ? 0 : bearingDifferenceDeg(routeBearing, requestBearing);
 
-      const dropToRouteKm = pointToPolylineKm(request.drop, corridor.polyline);
-      const dropProgressKm = projectOnPolylineKm(request.drop, corridor.polyline);
-      // The corridor polyline starts at the vehicle, so the vehicle's own
-      // progress along it is zero and every point is trivially "ahead" of it.
-      // The question that actually discriminates is whether the destination is
-      // ahead of the *pickup* along the direction of travel: a drop that
-      // projects earlier than its own pickup means the rider wants to go back
-      // the way this vehicle came.
+      const dropClass = classifyDropRelativeToRoute(
+        request.drop,
+        corridor.polyline,
+        settings.maxBearingDifferenceDeg,
+      );
       const pickupProgressKm = projectOnPolylineKm(request.pickup, corridor.polyline);
 
       context.recordMetrics(driverId, {
         bearingDifferenceDeg: round(difference, 1),
-        dropToRouteKm: round(dropToRouteKm, 2),
-        dropProgressKm: round(dropProgressKm, 2),
+        dropToRouteKm: round(dropClass.perpendicularKm, 2),
+        dropProgressKm: round(dropClass.dropProgressKm, 2),
         pickupProgressKm: round(pickupProgressKm, 2),
+        corridorExtensionKm: dropClass.isAheadExtension ? round(dropClass.extensionKm, 2) : 0,
       });
 
       const failure = firstDirectionFailure({
         difference,
-        dropToRouteKm,
-        dropProgressKm,
+        dropClass,
         pickupProgressKm,
         maxBearingDifferenceDeg: settings.maxBearingDifferenceDeg,
         maxDropToRouteDistanceKm: settings.maxDropToRouteDistanceKm,
@@ -104,8 +101,7 @@ export const directionCompatibilityStage: MatchingStage = {
 /** Checked in a fixed order so the reported reason is deterministic. */
 function firstDirectionFailure(args: {
   difference: number;
-  dropToRouteKm: number;
-  dropProgressKm: number;
+  dropClass: ReturnType<typeof classifyDropRelativeToRoute>;
   pickupProgressKm: number;
   maxBearingDifferenceDeg: number;
   maxDropToRouteDistanceKm: number;
@@ -117,9 +113,14 @@ function firstDirectionFailure(args: {
     });
   }
 
-  if (args.dropToRouteKm > args.maxDropToRouteDistanceKm) {
+  // Forward extension on the same corridor uses lateral offset, not distance-to-endpoint.
+  const offCorridorKm = args.dropClass.isAheadExtension
+    ? args.dropClass.lateralKm
+    : args.dropClass.perpendicularKm;
+
+  if (offCorridorKm > args.maxDropToRouteDistanceKm) {
     return reason("DESTINATION_OFF_CORRIDOR", "Destination sits well off this route's corridor", {
-      value: round(args.dropToRouteKm, 2),
+      value: round(offCorridorKm, 2),
       threshold: args.maxDropToRouteDistanceKm,
     });
   }
@@ -127,12 +128,12 @@ function firstDirectionFailure(args: {
   // A destination the vehicle would have to double back to reach is a reject
   // however close it is to the line — the same failure mode as a pickup behind
   // the vehicle, one stop further along.
-  if (args.dropProgressKm < args.pickupProgressKm) {
+  if (args.dropClass.dropProgressKm < args.pickupProgressKm) {
     return reason(
       "DESTINATION_BEHIND_VEHICLE",
       "Destination lies behind the pickup along this route's direction of travel",
       {
-        value: round(args.dropProgressKm, 2),
+        value: round(args.dropClass.dropProgressKm, 2),
         threshold: round(args.pickupProgressKm, 2),
       },
     );

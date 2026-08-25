@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { pathLengthKm } from "@/lib/geo";
 import { detourLowerBoundStage } from "@/matching/stages/detourLowerBound";
+import { directionCompatibilityStage } from "@/matching/stages/directionCompatibility";
 import { h3RouteCorridorStage } from "@/matching/stages/h3RouteCorridor";
 import { stopSequenceGenerationStage } from "@/matching/stages/stopSequenceGeneration";
 import { MockRoutingEngine } from "@/routing";
@@ -11,6 +12,7 @@ import { makeContext, type MakeContextInput } from "./fixtures/stageContext";
 async function run(input: MakeContextInput) {
   const context = makeContext(input);
   await h3RouteCorridorStage.execute(context);
+  await directionCompatibilityStage.execute(context);
   await stopSequenceGenerationStage.execute(context);
   const outcome = await detourLowerBoundStage.execute(context);
   return { context, outcome };
@@ -112,6 +114,21 @@ describe("detourLowerBound", () => {
 
       expect(boundAddedKm).toBeLessThanOrEqual(roadAddedKm + 1e-9);
     }
+  });
+
+  it("passes a corridor extension when the lower bound is under maxCorridorExtensionKm", async () => {
+    const { outcome } = await run({
+      driverId: "d1",
+      driverLocation: { lat: 28.6, lng: 77.2 },
+      committedStops: [
+        { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 25, lat: 28.6, lng: 77.35 },
+      ],
+      passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayMin: 20 }],
+      request: { pickup: { lat: 28.6, lng: 77.25 }, drop: { lat: 28.6, lng: 77.45 } },
+      settings: { maxAdditionalDistanceKm: 5, maxCorridorExtensionKm: 15 },
+    });
+
+    expect(outcome.verdicts[0]!.status).toBe("PASSED");
   });
 });
 

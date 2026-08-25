@@ -48,6 +48,14 @@ export interface OptimizerVisit {
   arrivalMin: number;
 }
 
+/** One visit event on the committed spine or in a first-solution hint. */
+export interface OptimizerVisitRef {
+  shipmentId: string;
+  type: "PICKUP" | "DROP";
+  /** Minutes from now for injected first-solution timestamps. */
+  startMin?: number;
+}
+
 export interface OptimizeToursRequest {
   /** Used for cache keying and debug traces; not sent to the provider. */
   driverId: string;
@@ -55,14 +63,21 @@ export interface OptimizeToursRequest {
   seatCapacity: number;
   shipments: OptimizerShipment[];
   /**
-   * Visits, in order, that the solver must keep frozen at the head of the
-   * route. Everything after `lockedVisits.length` is free to reorder.
-   *
-   * `startMin` is minutes from now for the injected visit timestamp. The
-   * proxy requires non-decreasing times on the wire; when omitted it
-   * staggers by index.
+   * Committed stops in execution order. The proxy turns consecutive pairs into
+   * Google `precedenceRules` so relative order is preserved while the new rider
+   * may be interleaved in any gap.
    */
-  lockedVisits: { shipmentId: string; type: "PICKUP" | "DROP"; startMin?: number }[];
+  committedPrecedence: OptimizerVisitRef[];
+  /**
+   * Optional first-solution hint from stage 7's best shortlisted sequence.
+   * Guides the solver toward a sensible insertion without append-only locking.
+   */
+  firstSolutionVisits?: OptimizerVisitRef[];
+  /**
+   * Legacy append-only spine lock. Prefer `committedPrecedence` + hard
+   * deadlines. When empty, the solver may interleave the new rider.
+   */
+  lockedVisits: OptimizerVisitRef[];
   timeoutMs: number;
 }
 

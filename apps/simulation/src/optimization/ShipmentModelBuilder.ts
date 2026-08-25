@@ -1,7 +1,7 @@
 import type { LatLng, Passenger, RideRequest } from "@/domain/entities";
 import { mockLeg } from "@/routing/MockRoutingEngine";
 
-import type { OptimizerShipment, OptimizeToursRequest } from "./types";
+import type { OptimizerShipment, OptimizerVisitRef, OptimizeToursRequest } from "./types";
 
 /**
  * Cost charged for leaving the new passenger unserved.
@@ -44,10 +44,23 @@ export interface BuildShipmentModelInput {
   newPassengerSoftDeadlineMin: number;
   softDeadlineCostPerHour: number;
   timeoutMs: number;
+  /** Best legal sequence from stage 7, if any — guides the solver. */
+  firstSolutionVisits?: OptimizerVisitRef[];
 }
 
 export function shipmentIdFor(passengerId: string): string {
   return `ship_${passengerId}`;
+}
+
+/** Maps committed scenario stops to solver visit refs for precedence / hints. */
+export function committedPrecedenceFrom(
+  committedStops: readonly CommittedStopInput[],
+): OptimizerVisitRef[] {
+  return committedStops.map((stop) => ({
+    shipmentId: shipmentIdFor(stop.passengerId),
+    type: stop.type,
+    startMin: stop.originalEtaMin,
+  }));
 }
 
 /**
@@ -79,36 +92,10 @@ function travelFloorsAlongSpine(
 /**
  * Turns a driver's committed route plus one new request into a solver model.
  *
- * The committed spine goes in twice — once as mandatory shipments with hard
- * deadlines, and once as `lockedVisits`. The deadlines say "you may not make
- * these people late"; the locked visits say "and you may not reshuffle them
- * relative to each other". Both are needed: without the lock, the solver would
- * happily reorder two passengers who are both still within tolerance, breaking
- * promises we already made about who gets collected first.
- *
- * UNRESOLVED — `lockedVisits` is stronger than that description.
- *
- * The proxy maps it to two relaxations on the injected route:
- *   1. `RELAX_VISIT_TIMES_AFTER_THRESHOLD` at `thresholdVisitCount = 0` so
- *      rough / zero ETAs cannot make the spine travel-infeasible.
- *   2. `RELAX_ALL_AFTER_THRESHOLD` at `thresholdVisitCount = spineLength + 1`
- *      so only the vehicle end (and anything after the locked visits) is
- *      free — new stops may only be appended after the committed spine.
- *
- * That still contradicts the Overview's flexible-commitment policy, which
- * allows inserting ahead of a committed pickup whenever that passenger's own
- * `maxPickupDelayMin` absorbs the delay — and it is the reason stages 5 and 6
- * enumerate and filter orderings at all. It also has two live consequences:
- * a rider can never be collected on the way to an existing rider's drop, which
- * is the most common pooling case; and committed arrivals never move relative
- * to each other in sequence, so existing-passenger delay from reordering is
- * structurally zero and the 30% existing-passenger term in stage 11's fairness
- * score is always zero with it.
- *
- * Relaxing it to a genuine relative-order constraint is a product decision
- * about how much freedom the solver gets over promises already made, so it is
- * left as specified rather than changed here. `incrementalCost.test.ts` pins
- * the current behaviour so the consequence stays visible.
+ * The committed spine goes in as mandatory shipments with hard deadlines.
+ * Those deadlines say "you may not make these people late" while still
+ * allowing the solver to interleave the new rider when pickup-before-drop,
+ * capacity, and per-passenger delay budgets permit.
  */
 export function buildOptimizeToursRequest(
   input: BuildShipmentModelInput,
@@ -123,6 +110,7 @@ export function buildOptimizeToursRequest(
     newPassengerSoftDeadlineMin,
     softDeadlineCostPerHour,
     timeoutMs,
+    firstSolutionVisits,
   } = input;
 
   const byPassenger = new Map<string, { pickup?: CommittedStopInput; drop?: CommittedStopInput }>();
@@ -186,43 +174,14 @@ export function buildOptimizeToursRequest(
     softDeadlineCostPerHour,
   });
 
-  // Onboard passengers need a synthetic pickup at the vehicle start so Google
-  // sees pickup-before-delivery. All of those pickups must lead the lock —
-  // inserting one just before each drop would force a phantom return to the
-  // vehicle start between drops and make the injected route travel-infeasible.
-  const lockedVisits: OptimizeToursRequest["lockedVisits"] = [];
-  const syntheticPickupOrder: string[] = [];
-  const syntheticSeen = new Set<string>();
-
-  for (const stop of committedStops) {
-    if (
-      stop.type === "DROP" &&
-      !byPassenger.get(stop.passengerId)?.pickup &&
-      !syntheticSeen.has(stop.passengerId)
-    ) {
-      syntheticPickupOrder.push(stop.passengerId);
-      syntheticSeen.add(stop.passengerId);
-    }
-  }
-
-  for (const passengerId of syntheticPickupOrder) {
-    lockedVisits.push({ shipmentId: shipmentIdFor(passengerId), type: "PICKUP", startMin: 0 });
-  }
-
-  for (const stop of committedStops) {
-    lockedVisits.push({
-      shipmentId: shipmentIdFor(stop.passengerId),
-      type: stop.type,
-      startMin: stop.originalEtaMin,
-    });
-  }
-
   return {
     driverId,
     vehicleStart,
     seatCapacity,
     shipments,
-    lockedVisits,
+    committedPrecedence: committedPrecedenceFrom(committedStops),
+    firstSolutionVisits,
+    lockedVisits: [],
     timeoutMs,
   };
 }

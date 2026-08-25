@@ -15,8 +15,8 @@ interface Candidate {
 /**
  * A deterministic stand-in for `OptimizeTours`.
  *
- * It honours the same contract the real solver does — locked spine, capacity,
- * hard deadlines, mandatory versus skippable shipments — and picks the
+ * It honours the same contract the real solver does — committed precedence,
+ * capacity, hard deadlines, mandatory versus skippable shipments — and picks the
  * shortest straight-line legal ordering. That is not what Google's solver
  * optimises for, and it does not need to be: these tests assert that the
  * pipeline handles a solution correctly, not that the solver is good.
@@ -96,21 +96,55 @@ function enumerateLegalOrderings(request: OptimizeToursRequest): Candidate[] {
 
   walk(events, []);
 
-  return results.filter((candidate) => respectsSpine(request, candidate));
+  return results.filter((candidate) => respectsRouteConstraints(request, candidate));
 }
 
-/** The locked visits must appear, in order, at the head of the route. */
-function respectsSpine(request: OptimizeToursRequest, candidate: Candidate): boolean {
+/**
+ * Legacy append-only lock: committed visits must sit at the head in order.
+ * Otherwise `committedPrecedence` must appear as an ordered subsequence.
+ */
+function respectsRouteConstraints(request: OptimizeToursRequest, candidate: Candidate): boolean {
   const indexById = new Map(request.shipments.map((shipment, index) => [shipment.id, index]));
 
-  return request.lockedVisits.every((locked, position) => {
-    const visit = candidate.visits[position];
-    return (
-      visit !== undefined &&
-      visit.type === locked.type &&
-      visit.shipmentIndex === indexById.get(locked.shipmentId)
-    );
-  });
+  if (request.lockedVisits.length > 0) {
+    return request.lockedVisits.every((locked, position) => {
+      const visit = candidate.visits[position];
+      return (
+        visit !== undefined &&
+        visit.type === locked.type &&
+        visit.shipmentIndex === indexById.get(locked.shipmentId)
+      );
+    });
+  }
+
+  const committed = request.committedPrecedence;
+  if (committed.length === 0) {
+    return true;
+  }
+
+  let searchFrom = 0;
+  for (const locked of committed) {
+    const shipmentIndex = indexById.get(locked.shipmentId);
+    if (shipmentIndex === undefined) {
+      return false;
+    }
+
+    let found = false;
+    for (let index = searchFrom; index < candidate.visits.length; index += 1) {
+      const visit = candidate.visits[index]!;
+      if (visit.shipmentIndex === shipmentIndex && visit.type === locked.type) {
+        searchFrom = index + 1;
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /** Road cost, or Infinity if capacity or a hard deadline is broken. */

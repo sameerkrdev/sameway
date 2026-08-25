@@ -23,6 +23,7 @@ function request(): OptimizeToursRequest {
       },
     ],
     lockedVisits: [],
+  committedPrecedence: [],
     timeoutMs: 400,
   };
 }

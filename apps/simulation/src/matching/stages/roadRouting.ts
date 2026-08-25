@@ -72,6 +72,16 @@ export const roadRoutingStage: MatchingStage = {
         originalEtaMin: originalEtaByStopId.get(stop.id) ?? 0,
       }));
 
+      const sequences = context.getSequences(driverId);
+      const bestSequence = sequences[0];
+      const firstSolutionVisits = bestSequence
+        ? bestSequence.stops.map((stop) => ({
+            shipmentId: shipmentIdFor(stop.passengerId),
+            type: stop.type,
+            startMin: originalEtaByStopId.get(stop.id),
+          }))
+        : undefined;
+
       const optimizerRequest = buildOptimizeToursRequest({
         driverId,
         vehicleStart: corridor.polyline[0]!,
@@ -82,6 +92,7 @@ export const roadRoutingStage: MatchingStage = {
         newPassengerSoftDeadlineMin: request.maxWaitMinutes,
         softDeadlineCostPerHour: 50,
         timeoutMs: settings.optimizerTimeoutMs,
+        firstSolutionVisits,
       });
 
       let solved;

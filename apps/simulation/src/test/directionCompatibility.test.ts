@@ -79,6 +79,17 @@ describe("directionCompatibility", () => {
     expect(outcome.verdicts[0]!.status).toBe("PASSED");
   });
 
+  it("passes a same-direction drop extending past the route terminus", async () => {
+    const { outcome, context } = await run({
+      ...eastbound,
+      request: { pickup: { lat: 28.6, lng: 77.25 }, drop: { lat: 28.6, lng: 77.5 } },
+      settings: { maxBearingDifferenceDeg: 75, maxDropToRouteDistanceKm: 3 },
+    });
+
+    expect(outcome.verdicts[0]!.status).toBe("PASSED");
+    expect(context.getMetrics("d1").corridorExtensionKm).toBeGreaterThan(5);
+  });
+
   it("records all three signals as metrics", async () => {
     const { context } = await run({
       ...eastbound,

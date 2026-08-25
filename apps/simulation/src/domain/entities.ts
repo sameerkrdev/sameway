@@ -202,6 +202,8 @@ export interface MatchingSettings {
   // Route feasibility.
   maxDetourPercent: number;
   maxAdditionalDistanceKm: number;
+  /** Same-direction drop beyond the last committed stop (corridor extension). */
+  maxCorridorExtensionKm: number;
   maxAdditionalDurationMin: number;
   maxExistingPassengerDelayMin: number;
   maxNewPassengerPickupDelayMin: number;

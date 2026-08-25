@@ -7,7 +7,7 @@ import { OptimizerTelemetry } from "./OptimizerTelemetry";
 import type { OptimizerEngine } from "./types";
 
 export * from "./types";
-export { buildOptimizeToursRequest, shipmentIdFor } from "./ShipmentModelBuilder";
+export { buildOptimizeToursRequest, committedPrecedenceFrom, shipmentIdFor } from "./ShipmentModelBuilder";
 export type { BuildShipmentModelInput, CommittedStopInput } from "./ShipmentModelBuilder";
 export { readOptimizeToursResponse, toProposedStopSequence } from "./SolutionReader";
 export { OptimizeToursEngine, OPTIMIZER_ENDPOINT } from "./OptimizeToursEngine";

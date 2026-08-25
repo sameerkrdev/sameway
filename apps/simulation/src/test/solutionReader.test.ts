@@ -26,6 +26,7 @@ const request: OptimizeToursRequest = {
     },
   ],
   lockedVisits: [],
+  committedPrecedence: [],
   timeoutMs: 400,
 };
 

@@ -40,6 +40,8 @@ export const DEFAULT_SETTINGS: MatchingSettings = {
 
   maxDetourPercent: 15,
   maxAdditionalDistanceKm: 5,
+  /** Max forward extension past the last committed stop (same-direction pooling). */
+  maxCorridorExtensionKm: 15,
   maxAdditionalDurationMin: 12,
   maxExistingPassengerDelayMin: 8,
   maxNewPassengerPickupDelayMin: 6,

@@ -25,14 +25,15 @@ describe("Delhi NCR morning pool", () => {
     // out, so its single-point corridor never reaches the pickup. D005 is idle
     // 2.5 km out: near enough for the ring search, too far once stage 3
     // measures it. D006 is on the westbound ride and the request heads east.
-    // D007 is rejected at stage 10; see its own test below. D001 is the only
-    // driver left, and the remaining filters are not implemented
-    // yet.
-    expect(result.ranked.map((entry) => entry.driverId)).toEqual(["D001"]);
+    // D007 is the textbook pool: pickup on an eastbound committed route. D001
+    // wins on score; D007 is the runner-up.
+    expect(result.ranked.map((entry) => entry.driverId)).toEqual(["D001", "D007"]);
     const winner = evaluationFor(result, "D001");
     expect(winner.finalStatus).toBe("PASSED");
     expect(winner.rank).toBe(1);
     expect(winner.stageResults.every((stage) => stage.status === "PASSED")).toBe(true);
+    expect(evaluationFor(result, "D007").finalStatus).toBe("PASSED");
+    expect(evaluationFor(result, "D007").rank).toBe(2);
   });
 
   it("rejects an offline driver at basic eligibility", () => {
@@ -107,27 +108,25 @@ describe("Delhi NCR morning pool", () => {
       { id: "detourLowerBound", out: 2 },
       { id: "roadRouting", out: 2 },
       { id: "incrementalCost", out: 2 },
-      { id: "hardConstraints", out: 1 },
-      { id: "scoring", out: 1 },
-      { id: "commit", out: 1 },
+      { id: "hardConstraints", out: 2 },
+      { id: "scoring", out: 2 },
+      { id: "commit", out: 2 },
     ]);
     // Candidates now come from the corridor stage rather than H3 ring growth.
     expect(result.summary.candidates).toBe(4);
-    expect(result.summary.passed).toBe(1);
-    expect(result.summary.rejected).toBe(7);
+    expect(result.summary.passed).toBe(2);
+    expect(result.summary.rejected).toBe(6);
   });
 
-  it("rejects the pooled ride on detour, because the spine is locked to the head", () => {
-    // D007 is the case the current spine policy makes unreachable. Its rider is
-    // going 14 km east and the new rider's pickup is right at the start of that
-    // run — textbook pooling. But lockedVisits pins both committed stops to the
-    // head of the route, so the solver can only append the new rider after the
-    // 14 km drop, and the detour comes out near 100%. See ShipmentModelBuilder.
-    expect(failureCodes(result, "D007")).toEqual(["ROUTE_DETOUR_TOO_HIGH"]);
+  it("passes D007 for textbook pooling on an eastbound committed route", () => {
+    // D007's rider is going 14 km east and the new rider's pickup is at the
+    // start of that run. Without a locked spine the solver interleaves the new
+    // pickup on the way and the detour stays within limits.
+    expect(failureCodes(result, "D007")).toEqual([]);
 
     const evaluation = evaluationFor(result, "D007");
-    expect(evaluation.failedAtStageId).toBe("hardConstraints");
-    expect(evaluation.metrics.detourPercent).toBeGreaterThan(50);
+    expect(evaluation.finalStatus).toBe("PASSED");
+    expect(evaluation.metrics.detourPercent).toBeLessThan(15);
   });
 
   it("rejects a ride heading the other way", () => {
@@ -164,7 +163,6 @@ describe("Delhi NCR morning pool", () => {
       CORRIDOR_NO_MATCH: 1,
       PICKUP_TOO_FAR_FROM_ROUTE: 1,
       BEARING_INCOMPATIBLE: 1,
-      ROUTE_DETOUR_TOO_HIGH: 1,
     });
   });
 

@@ -63,10 +63,11 @@ const request: ProxyRequest = {
       softDeadlineCostPerHour: 50,
     },
   ],
-  lockedVisits: [
+  committedPrecedence: [
     { shipmentId: "ship_pA", type: "PICKUP" },
     { shipmentId: "ship_pA", type: "DROP" },
   ],
+  lockedVisits: [],
 };
 
 describe("OptimizeTours wire format", () => {
@@ -116,8 +117,76 @@ describe("OptimizeTours wire format", () => {
     expect(shipments[1]!.penaltyCost).toBe(100);
   });
 
-  it("resolves locked visits to shipment indices in order", () => {
+  it("does not append-lock the route — committed order uses precedenceRules", () => {
     const payload = toShipmentModel(request, NOW_MS);
+    expect(payload.injectedSolutionConstraint).toBeUndefined();
+
+    const model = payload.model as Record<string, unknown>;
+    const rules = model.precedenceRules as Record<string, unknown>[];
+
+    expect(rules).toEqual([
+      {
+        firstIndex: 0,
+        firstIsDelivery: false,
+        secondIndex: 0,
+        secondIsDelivery: true,
+        offsetDuration: "0s",
+      },
+    ]);
+  });
+
+  it("emits injectedFirstSolutionRoutes as a hint when stage 7 provides a sequence", () => {
+    const payload = toShipmentModel(
+      {
+        ...request,
+        firstSolutionVisits: [
+          { shipmentId: "ship_pA", type: "PICKUP", startMin: 0 },
+          { shipmentId: "ship_pNew", type: "PICKUP", startMin: 4 },
+          { shipmentId: "ship_pA", type: "DROP", startMin: 20 },
+          { shipmentId: "ship_pNew", type: "DROP", startMin: 25 },
+        ],
+      },
+      NOW_MS,
+    );
+
+    expect(payload.injectedSolutionConstraint).toBeUndefined();
+    const routes = payload.injectedFirstSolutionRoutes as Record<string, unknown>[];
+    const route = routes[0]!;
+
+    expect(route.vehicleStartTime).toBe("2026-08-23T14:23:45Z");
+    expect(route.visits).toEqual([
+      { shipmentIndex: 0, isPickup: true, startTime: "2026-08-23T14:23:45Z" },
+      { shipmentIndex: 1, isPickup: true, startTime: "2026-08-23T14:27:45Z" },
+      { shipmentIndex: 0, isPickup: false, startTime: "2026-08-23T14:43:45Z" },
+      { shipmentIndex: 1, isPickup: false, startTime: "2026-08-23T14:48:45Z" },
+    ]);
+  });
+
+  it("rejects a committed visit naming a shipment that is not in the model", () => {
+    expect(() =>
+      toShipmentModel(
+        {
+          ...request,
+          committedPrecedence: [{ shipmentId: "ship_ghost", type: "PICKUP" }],
+        },
+        NOW_MS,
+      ),
+    ).toThrow(/ship_ghost/);
+  });
+});
+
+describe("legacy append-only locked spine", () => {
+  const lockedRequest: ProxyRequest = {
+    ...request,
+    committedPrecedence: [],
+    lockedVisits: [
+      { shipmentId: "ship_pA", type: "PICKUP" },
+      { shipmentId: "ship_pA", type: "DROP" },
+    ],
+  };
+
+  it("resolves locked visits to shipment indices in order", () => {
+    const payload = toShipmentModel(lockedRequest, NOW_MS);
     const constraint = payload.injectedSolutionConstraint as Record<string, unknown>;
     const routes = constraint.routes as Record<string, unknown>[];
     const route = routes[0]!;
@@ -131,7 +200,7 @@ describe("OptimizeTours wire format", () => {
   });
 
   it("emits dual relaxations: free times from start, append-only after the spine", () => {
-    const payload = toShipmentModel(request, NOW_MS);
+    const payload = toShipmentModel(lockedRequest, NOW_MS);
     const constraint = payload.injectedSolutionConstraint as Record<string, unknown>;
     const groups = constraint.constraintRelaxations as Record<string, unknown>[];
     const relaxations = groups[0]!.relaxations as Record<string, unknown>[];
@@ -145,7 +214,7 @@ describe("OptimizeTours wire format", () => {
   it("uses startMin when provided and keeps times non-decreasing", () => {
     const payload = toShipmentModel(
       {
-        ...request,
+        ...lockedRequest,
         lockedVisits: [
           { shipmentId: "ship_pA", type: "PICKUP", startMin: 4 },
           { shipmentId: "ship_pA", type: "DROP", startMin: 2 },
@@ -165,7 +234,7 @@ describe("OptimizeTours wire format", () => {
   it("rejects a locked visit naming a shipment that is not in the model", () => {
     expect(() =>
       toShipmentModel(
-        { ...request, lockedVisits: [{ shipmentId: "ship_ghost", type: "PICKUP" }] },
+        { ...lockedRequest, lockedVisits: [{ shipmentId: "ship_ghost", type: "PICKUP" }] },
         NOW_MS,
       ),
     ).toThrow(/ship_ghost/);

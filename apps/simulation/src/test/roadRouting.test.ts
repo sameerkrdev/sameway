@@ -137,6 +137,19 @@ describe("roadRouting", () => {
 
     expect(outcome.verdicts[0]!.reasons[0]!.code).toBe("OPTIMIZER_MANDATORY_SHIPMENT_SKIPPED");
   });
+
+  it("passes stage 7's best sequence as a first-solution hint", async () => {
+    const optimizer = new StubOptimizerEngine();
+    await run({ ...pooled, optimizer });
+
+    const sent = optimizer.requests[0]!;
+    expect(sent.firstSolutionVisits?.length).toBeGreaterThan(0);
+    expect(sent.firstSolutionVisits!.some((visit) => visit.shipmentId.includes("pNew"))).toBe(
+      true,
+    );
+    expect(sent.lockedVisits).toEqual([]);
+    expect(sent.committedPrecedence.length).toBeGreaterThan(0);
+  });
 });
 
 describe("roadRouting stop identity", () => {

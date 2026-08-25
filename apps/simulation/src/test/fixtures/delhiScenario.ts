@@ -126,8 +126,9 @@ export function buildDelhiScenario(): Scenario {
     passenger("P_FULL_B", { seatsRequired: 2, state: "IN_RIDE" }),
     // D006 is committed to a trip heading the opposite way.
     passenger("P_WEST"),
-    // D007's existing rider refuses to share.
-    passenger("P_SOLO", { allowsPooling: false }),
+    // D007 carries a rider on a long eastbound trip — textbook pooling once the
+    // solver can interleave the new pickup on the way.
+    passenger("P_SOLO"),
   ];
 
   const fullRide: Ride = {

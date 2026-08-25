@@ -1,4 +1,5 @@
 import { detourLowerBoundStage } from "@/matching/stages/detourLowerBound";
+import { directionCompatibilityStage } from "@/matching/stages/directionCompatibility";
 import { h3RouteCorridorStage } from "@/matching/stages/h3RouteCorridor";
 import { incrementalCostStage } from "@/matching/stages/incrementalCost";
 import { operationalStateStage } from "@/matching/stages/operationalState";
@@ -28,6 +29,7 @@ export async function runToIncrementalCost(input: MakeContextInput) {
     operationalStateStage,
     h3RouteCorridorStage,
     pickupRouteDistanceStage,
+    directionCompatibilityStage,
     stopSequenceGenerationStage,
     pickupTimeWindowStage,
     detourLowerBoundStage,

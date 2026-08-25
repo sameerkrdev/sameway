@@ -34,6 +34,11 @@ export interface ProxyRequest {
   vehicleStart: { lat: number; lng: number };
   seatCapacity: number;
   shipments: ProxyShipment[];
+  /** Consecutive pairs become precedenceRules — order preserved, gaps open. */
+  committedPrecedence?: ProxyLockedVisit[];
+  /** Stage-7 hint; becomes injectedFirstSolutionRoutes, not a hard lock. */
+  firstSolutionVisits?: ProxyLockedVisit[];
+  /** Legacy append-only lock. Prefer committedPrecedence instead. */
   lockedVisits: ProxyLockedVisit[];
   timeoutMs: number;
 }
@@ -145,10 +150,59 @@ export function toShipmentModel(
     const index = shipmentIndexById.get(shipmentId);
     if (index === undefined) {
       throw new ProxyBadRequestError(
-        `lockedVisits references shipmentId "${shipmentId}", which is not present in shipments.`,
+        `visit references shipmentId "${shipmentId}", which is not present in shipments.`,
       );
     }
     return index;
+  }
+
+  function visitsToInjectedRoute(
+    visitRefs: ProxyLockedVisit[],
+    vehicleEndMin: number,
+  ): Record<string, unknown> {
+    let lastStartMin = 0;
+    const visits = visitRefs.map((visit, index) => {
+      const raw = visit.startMin ?? index;
+      const startMin = Math.max(raw, lastStartMin);
+      lastStartMin = startMin;
+      return {
+        shipmentIndex: resolveShipmentIndex(visit.shipmentId),
+        isPickup: visit.type === "PICKUP",
+        startTime: isoAt(nowMs, startMin),
+      };
+    });
+
+    return {
+      vehicleIndex: 0,
+      vehicleStartTime: globalStartTime,
+      vehicleEndTime: isoAt(nowMs, Math.max(lastStartMin, vehicleEndMin)),
+      visits,
+    };
+  }
+
+  function buildPrecedenceRules(
+    precedence: ProxyLockedVisit[],
+  ): Record<string, unknown>[] {
+    for (const visit of precedence) {
+      resolveShipmentIndex(visit.shipmentId);
+    }
+
+    const rules: Record<string, unknown>[] = [];
+
+    for (let index = 0; index < precedence.length - 1; index += 1) {
+      const first = precedence[index]!;
+      const second = precedence[index + 1]!;
+
+      rules.push({
+        firstIndex: resolveShipmentIndex(first.shipmentId),
+        firstIsDelivery: first.type === "DROP",
+        secondIndex: resolveShipmentIndex(second.shipmentId),
+        secondIsDelivery: second.type === "DROP",
+        offsetDuration: "0s",
+      });
+    }
+
+    return rules;
   }
 
   const globalStartTime = isoAt(nowMs, 0);
@@ -184,56 +238,33 @@ export function toShipmentModel(
     shipments,
   };
 
+  const precedenceRules = buildPrecedenceRules(request.committedPrecedence ?? []);
+  if (precedenceRules.length > 0) {
+    model.precedenceRules = precedenceRules;
+  }
+
   const payload: Record<string, unknown> = { timeout: durationFromMs(request.timeoutMs), model };
 
-  if (request.lockedVisits.length > 0) {
-    // Injected routes must satisfy the same validity rules as
-    // injectedFirstSolutionRoutes: non-decreasing times from vehicleStartTime
-    // through every visit startTime to vehicleEndTime. Omitting
-    // vehicleStartTime is rejected outright ("missing vehicle_start_time").
-    //
-    // Visit startTimes are seeded from originalEtaMin when provided; otherwise
-    // we stagger by index so equal-zero sketch ETAs still form a valid chain.
-    // Actual travel times are free because we relax visit times from the
-    // vehicle start (see constraintRelaxations below).
-    let lastStartMin = 0;
-    const visits = request.lockedVisits.map((visit, index) => {
-      const raw = visit.startMin ?? index;
-      const startMin = Math.max(raw, lastStartMin);
-      lastStartMin = startMin;
-      return {
-        shipmentIndex: resolveShipmentIndex(visit.shipmentId),
-        isPickup: visit.type === "PICKUP",
-        startTime: isoAt(nowMs, startMin),
-      };
-    });
+  if (request.firstSolutionVisits && request.firstSolutionVisits.length > 0) {
+    payload.injectedFirstSolutionRoutes = [
+      visitsToInjectedRoute(request.firstSolutionVisits, latestDeadlineMin),
+    ];
+  }
 
+  if (request.lockedVisits.length > 0) {
+    // Legacy append-only spine. Prefer committedPrecedence + firstSolutionVisits.
     const spineLength = request.lockedVisits.length;
 
     payload.injectedSolutionConstraint = {
-      routes: [
-        {
-          vehicleIndex: 0,
-          vehicleStartTime: globalStartTime,
-          // End is relaxed (RELAX_VISIT_TIMES / RELAX_ALL at vehicle end) but
-          // must still be ≥ the last injected visit for the validity check.
-          vehicleEndTime: isoAt(nowMs, Math.max(lastStartMin, latestDeadlineMin)),
-          visits,
-        },
-      ],
+      routes: [visitsToInjectedRoute(request.lockedVisits, latestDeadlineMin)],
       constraintRelaxations: [
         {
           vehicleIndices: [0],
           relaxations: [
-            // Free all injected start times so zero/rough ETAs cannot make the
-            // locked spine travel-infeasible while its sequence stays fixed.
             {
               level: "RELAX_VISIT_TIMES_AFTER_THRESHOLD",
               thresholdVisitCount: 0,
             },
-            // Allow new visits only after the locked spine. threshold = N+1
-            // targets the vehicle end (docs: route.visits_size()+1), not the
-            // last locked visit — using N accidentally RELAX_ALL'd that visit.
             {
               level: "RELAX_ALL_AFTER_THRESHOLD",
               thresholdVisitCount: spineLength + 1,

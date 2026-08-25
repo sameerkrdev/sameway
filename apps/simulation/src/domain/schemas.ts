@@ -129,6 +129,7 @@ export const matchingSettingsSchema = z.object({
   estimatedSpeedKmh: z.number().min(1),
   maxDetourPercent: z.number().min(0),
   maxAdditionalDistanceKm: z.number().min(0),
+  maxCorridorExtensionKm: z.number().min(0),
   maxAdditionalDurationMin: z.number().min(0),
   maxExistingPassengerDelayMin: z.number().min(0),
   maxNewPassengerPickupDelayMin: z.number().min(0),

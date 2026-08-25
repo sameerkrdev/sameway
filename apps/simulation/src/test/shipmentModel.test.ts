@@ -88,9 +88,10 @@ describe("buildOptimizeToursRequest", () => {
     expect(fresh.seats).toBe(2);
   });
 
-  it("locks the committed visits in their committed order", () => {
+  it("does not lock committed visits — the solver may interleave the new rider", () => {
     const built = buildOptimizeToursRequest(baseInput);
-    expect(built.lockedVisits).toEqual([
+    expect(built.lockedVisits).toEqual([]);
+    expect(built.committedPrecedence).toEqual([
       { shipmentId: "ship_pA", type: "PICKUP", startMin: 4 },
       { shipmentId: "ship_pA", type: "DROP", startMin: 15 },
     ]);
@@ -105,16 +106,11 @@ describe("buildOptimizeToursRequest", () => {
 
     const committed = built.shipments.find((shipment) => shipment.passengerId === "pA")!;
     expect(committed.pickupDeadlineMin).toBeUndefined();
-    // Synthetic pickup must still appear in the lock so Google sees pickup
-    // before delivery for the onboard shipment.
-    expect(built.lockedVisits).toEqual([
-      { shipmentId: "ship_pA", type: "PICKUP", startMin: 0 },
-      { shipmentId: "ship_pA", type: "DROP", startMin: 15 },
-    ]);
+    expect(built.lockedVisits).toEqual([]);
     expect(committed.pickup).toEqual(baseInput.vehicleStart);
   });
 
-  it("injects synthetic onboard pickups ahead of every remaining stop", () => {
+  it("models onboard pickup at vehicle start without locking visit order", () => {
     const built = buildOptimizeToursRequest({
       ...baseInput,
       committedStops: [
@@ -128,16 +124,12 @@ describe("buildOptimizeToursRequest", () => {
       ]),
     });
 
-    // All synthetic pickups lead — never interleaved before each drop.
-    expect(built.lockedVisits).toEqual([
-      { shipmentId: "ship_pA", type: "PICKUP", startMin: 0 },
-      { shipmentId: "ship_pA", type: "DROP", startMin: 10 },
-      { shipmentId: "ship_pB", type: "PICKUP", startMin: 14 },
-      { shipmentId: "ship_pB", type: "DROP", startMin: 22 },
-    ]);
+    expect(built.lockedVisits).toEqual([]);
+    const onboard = built.shipments.find((shipment) => shipment.passengerId === "pA")!;
+    expect(onboard.pickup).toEqual(baseInput.vehicleStart);
   });
 
-  it("places every onboard synthetic pickup at the head when multiple are aboard", () => {
+  it("models multiple onboard passengers without locking visit order", () => {
     const built = buildOptimizeToursRequest({
       ...baseInput,
       committedStops: [
@@ -150,12 +142,7 @@ describe("buildOptimizeToursRequest", () => {
       ]),
     });
 
-    expect(built.lockedVisits).toEqual([
-      { shipmentId: "ship_pA", type: "PICKUP", startMin: 0 },
-      { shipmentId: "ship_pB", type: "PICKUP", startMin: 0 },
-      { shipmentId: "ship_pA", type: "DROP", startMin: 10 },
-      { shipmentId: "ship_pB", type: "DROP", startMin: 22 },
-    ]);
+    expect(built.lockedVisits).toEqual([]);
   });
 
   it("floors hard deadlines with slack'd travel so Google windows stay reachable", () => {

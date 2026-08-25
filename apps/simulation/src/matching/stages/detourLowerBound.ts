@@ -46,6 +46,11 @@ export const detourLowerBoundStage: MatchingStage = {
 
       const start = corridor.polyline[0]!;
       const baselineKm = pathLengthKm(corridor.polyline);
+      const metrics = context.getMetrics(driverId);
+      const isCorridorExtension = (metrics.corridorExtensionKm ?? 0) > 0;
+      const distanceCap = isCorridorExtension
+        ? settings.maxCorridorExtensionKm
+        : settings.maxAdditionalDistanceKm;
 
       const scored = candidates.map((candidate) => ({
         candidate,
@@ -66,15 +71,17 @@ export const detourLowerBoundStage: MatchingStage = {
       // reject every idle driver on any trip longer than the cap. Their real
       // cost is still measured at stages 9 and 10, against the rider's solo
       // route rather than against a route that does not exist.
-      if (!corridor.isIdle && best.addedKm > settings.maxAdditionalDistanceKm) {
+      if (!corridor.isIdle && best.addedKm > distanceCap) {
         verdicts.push({
           driverId,
           status: "FAILED",
           reasons: [
             reason(
               "DETOUR_LOWER_BOUND_EXCEEDED",
-              "Even the straight-line lower bound exceeds the added-distance cap",
-              { value: round(best.addedKm, 2), threshold: settings.maxAdditionalDistanceKm },
+              isCorridorExtension
+                ? "Even the straight-line lower bound exceeds the corridor-extension cap"
+                : "Even the straight-line lower bound exceeds the added-distance cap",
+              { value: round(best.addedKm, 2), threshold: distanceCap },
             ),
           ],
         });
@@ -83,7 +90,7 @@ export const detourLowerBoundStage: MatchingStage = {
 
       const withinBound = corridor.isIdle
         ? scored
-        : scored.filter((entry) => entry.addedKm <= settings.maxAdditionalDistanceKm);
+        : scored.filter((entry) => entry.addedKm <= distanceCap);
 
       // A separate, blunter cap on top of the bound. The bound removes only
       // provably-hopeless candidates; this one bounds spend regardless of how
@@ -110,7 +117,7 @@ export const detourLowerBoundStage: MatchingStage = {
               })
             : reason("LOWER_BOUND_OK", "Insertion is within the added-distance cap", {
                 value: round(best.addedKm, 2),
-                threshold: settings.maxAdditionalDistanceKm,
+                threshold: distanceCap,
               }),
         ],
       });
