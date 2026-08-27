@@ -314,7 +314,14 @@ function MapSurface() {
             Showing {MARKER_BUDGET} of {visibleDrivers.length} drivers to keep the map responsive.
           </p>
         ) : null}
-        {!isSketching && selectedRide && selectedRoad.path.length >= 2 ? (
+        {!isSketching && selectedEvaluation?.insertion?.path && selectedEvaluation.insertion.path.length >= 2 ? (
+          <p className="max-w-48 text-[11px] text-[var(--muted-foreground)]">
+            {selectedEvaluation.finalStatus === "PASSED"
+              ? "Green: Google solved route with new rider"
+              : "Red: Google solved route (rejected by constraints)"}
+          </p>
+        ) : null}
+        {!isSketching && selectedRide && selectedRoad.path.length >= 2 && !selectedEvaluation?.insertion?.path ? (
           <p className="max-w-48 text-[11px] text-[var(--muted-foreground)]">
             {selectedRoad.loading
               ? "Loading Google road route…"

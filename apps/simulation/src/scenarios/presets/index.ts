@@ -132,10 +132,9 @@ const airportPooling: ScenarioPreset = {
           passengerId: "P_NEW",
           pickup: offsetBy(CP, 0.4, 195),
           drop: DELHI_PLACES.igiAirport,
-          maxDetourPercent: 25,
         }),
       ],
-      settings: { maxDetourPercent: 25, maxAdditionalDistanceKm: 8 },
+      settings: {},
     });
   },
 };
@@ -209,10 +208,8 @@ const multiplePassengers: ScenarioPreset = {
           passengerId: "P_NEW",
           pickup: offsetBy(CP, 1.4, 82),
           drop: offsetBy(CP, 4.6, 91),
-          maxDetourPercent: 30,
         }),
       ],
-      settings: { maxDetourPercent: 30 },
     });
   },
 };
@@ -266,10 +263,8 @@ const vehicleCapacityTest: ScenarioPreset = {
           seatsRequired: 2,
           pickup: offsetBy(CP, 1.5, 47),
           drop: offsetBy(CP, 4.0, 52),
-          maxDetourPercent: 40,
         }),
       ],
-      settings: { maxDetourPercent: 40 },
     });
   },
 };

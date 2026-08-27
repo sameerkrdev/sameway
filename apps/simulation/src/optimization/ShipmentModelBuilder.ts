@@ -163,6 +163,12 @@ export function buildOptimizeToursRequest(
     shipments.push(shipment);
   }
 
+  if (byPassenger.has(request.passengerId)) {
+    throw new Error(
+      `Request passenger ${request.passengerId} is already committed on this ride; matching a duplicate shipment would make OptimizeTours reject the model.`,
+    );
+  }
+
   shipments.push({
     id: shipmentIdFor(request.passengerId),
     passengerId: request.passengerId,

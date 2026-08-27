@@ -90,7 +90,6 @@ const rideRequestSchema = z.object({
   requiresWheelchairAccess: z.boolean(),
   luggageCount: z.number().int().min(0),
   maxWaitMinutes: z.number().min(0),
-  maxDetourPercent: z.number().min(0),
   maxWalkingDistanceM: z.number().min(0),
   priority: z.number().int(),
 });
@@ -127,8 +126,6 @@ export const matchingSettingsSchema = z.object({
   maxDropToRouteDistanceKm: z.number().min(0),
   maxBearingDifferenceDeg: z.number().min(0).max(180),
   estimatedSpeedKmh: z.number().min(1),
-  maxDetourPercent: z.number().min(0),
-  maxAdditionalDistanceKm: z.number().min(0),
   maxCorridorExtensionKm: z.number().min(0),
   maxAdditionalDurationMin: z.number().min(0),
   maxExistingPassengerDelayMin: z.number().min(0),
@@ -219,7 +216,7 @@ function numberOr(value: unknown, fallback: number): number {
  * unknown properties.
  */
 function migrateSettings(legacy: Record<string, unknown>): Record<string, unknown> {
-  return {
+  const merged = {
     ...DEFAULT_SETTINGS,
     ...legacy,
     stageOrder: [...DEFAULT_STAGE_ORDER],
@@ -227,6 +224,10 @@ function migrateSettings(legacy: Record<string, unknown>): Record<string, unknow
       ? { ...DEFAULT_SETTINGS.weights, ...legacy.weights }
       : { ...DEFAULT_SETTINGS.weights },
   };
+  // Drop settings removed from MatchingSettings so old exports stay importable.
+  delete merged.maxDetourPercent;
+  delete merged.maxAdditionalDistanceKm;
+  return merged;
 }
 
 /**

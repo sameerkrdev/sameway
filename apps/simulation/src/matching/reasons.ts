@@ -60,6 +60,11 @@ export const REASONS = {
     outcome: "FAIL",
   },
   REQUEST_PASSENGER_UNKNOWN: { category: "VALIDATION", label: "Unknown passenger", outcome: "FAIL" },
+  REQUEST_PASSENGER_ALREADY_ON_RIDE: {
+    category: "VALIDATION",
+    label: "Passenger already on a ride",
+    outcome: "FAIL",
+  },
 
   // Spatial ------------------------------------------------------------------
   H3_CANDIDATE_FOUND: { category: "SPATIAL", label: "Found in H3 search", outcome: "PASS" },

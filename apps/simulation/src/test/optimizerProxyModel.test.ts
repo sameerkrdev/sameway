@@ -118,21 +118,52 @@ describe("OptimizeTours wire format", () => {
   });
 
   it("does not append-lock the route — committed order uses precedenceRules", () => {
-    const payload = toShipmentModel(request, NOW_MS);
+    // Same-shipment pickup→drop is already implicit in ShipmentModel;
+    // OptimizeTours rejects first_index == second_index. Only cross-shipment
+    // consecutive pairs become rules.
+    const payload = toShipmentModel(
+      {
+        ...request,
+        shipments: [
+          ...request.shipments.slice(0, 1),
+          {
+            id: "ship_pB",
+            pickup: { lat: 28.61, lng: 77.23 },
+            drop: { lat: 28.62, lng: 77.35 },
+            seats: 1,
+            dropDeadlineMin: 40,
+            penaltyCost: null,
+          },
+          request.shipments[1]!,
+        ],
+        committedPrecedence: [
+          { shipmentId: "ship_pA", type: "PICKUP" },
+          { shipmentId: "ship_pA", type: "DROP" },
+          { shipmentId: "ship_pB", type: "DROP" },
+        ],
+      },
+      NOW_MS,
+    );
     expect(payload.injectedSolutionConstraint).toBeUndefined();
 
     const model = payload.model as Record<string, unknown>;
     const rules = model.precedenceRules as Record<string, unknown>[];
 
+    // P001 pickup→drop skipped (same index); only drop_A → drop_B remains.
     expect(rules).toEqual([
       {
         firstIndex: 0,
-        firstIsDelivery: false,
-        secondIndex: 0,
+        firstIsDelivery: true,
+        secondIndex: 1,
         secondIsDelivery: true,
         offsetDuration: "0s",
       },
     ]);
+  });
+
+  it("omits precedenceRules when every consecutive pair is the same shipment", () => {
+    const model = toShipmentModel(request, NOW_MS).model as Record<string, unknown>;
+    expect(model.precedenceRules).toBeUndefined();
   });
 
   it("emits injectedFirstSolutionRoutes as a hint when stage 7 provides a sequence", () => {

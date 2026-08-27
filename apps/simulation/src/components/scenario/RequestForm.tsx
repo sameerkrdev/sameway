@@ -1,4 +1,5 @@
 import { MapPin } from "lucide-react";
+import { useMemo } from "react";
 
 import { EmptyState } from "@/components/shared/StatusIcon";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,11 @@ export function RequestForm() {
 
   const request = scenario.requests[0];
 
+  const availablePassengers = useMemo(() => {
+    const onRide = new Set(scenario.rides.flatMap((ride) => ride.passengerIds));
+    return scenario.passengers.filter((passenger) => !onRide.has(passenger.id));
+  }, [scenario.passengers, scenario.rides]);
+
   if (!request) {
     return <EmptyState message="No ride request. Load a preset to create one." />;
   }
@@ -43,13 +49,18 @@ export function RequestForm() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {scenario.passengers.map((passenger) => (
+            {availablePassengers.map((passenger) => (
               <SelectItem key={passenger.id} value={passenger.id}>
                 {passenger.name}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {availablePassengers.length === 0 ? (
+          <p className="mt-1 text-[11px] text-[var(--fail)]">
+            Every passenger is already on a ride. Sketch a new passenger for the next request.
+          </p>
+        ) : null}
       </div>
 
       <LocationRow
@@ -88,12 +99,6 @@ export function RequestForm() {
           value={request.maxWaitMinutes}
           min={0}
           onChange={(maxWaitMinutes) => upsertRequest({ ...request, maxWaitMinutes })}
-        />
-        <NumberField
-          label="Max detour (%)"
-          value={request.maxDetourPercent}
-          min={0}
-          onChange={(maxDetourPercent) => upsertRequest({ ...request, maxDetourPercent })}
         />
       </div>
 

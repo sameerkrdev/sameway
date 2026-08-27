@@ -132,7 +132,6 @@ export function makeContext(input: MakeContextInput): MatchingContext & {
     requiresWheelchairAccess: false,
     luggageCount: 0,
     maxWaitMinutes: 8,
-    maxDetourPercent: 15,
     maxWalkingDistanceM: 300,
     priority: 0,
     ...input.request,

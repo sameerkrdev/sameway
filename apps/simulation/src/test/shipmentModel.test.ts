@@ -41,7 +41,6 @@ const request: RideRequest = {
   requiresWheelchairAccess: false,
   luggageCount: 0,
   maxWaitMinutes: 8,
-  maxDetourPercent: 15,
   maxWalkingDistanceM: 300,
   priority: 0,
 };
@@ -95,6 +94,18 @@ describe("buildOptimizeToursRequest", () => {
       { shipmentId: "ship_pA", type: "PICKUP", startMin: 4 },
       { shipmentId: "ship_pA", type: "DROP", startMin: 15 },
     ]);
+  });
+
+  it("never emits two shipments with the same id (Google rejects double pickups)", () => {
+    // If the sketch reuses a passenger already on the ride, the builder must
+    // not invent a second ship_* row — OptimizeTours then fails with
+    // "Shipment #N is picked up more than once" on injected_first_solution_routes.
+    expect(() =>
+      buildOptimizeToursRequest({
+        ...baseInput,
+        request: { ...request, passengerId: "pA" },
+      }),
+    ).toThrow(/already on this ride|already committed/i);
   });
 
   it("omits a pickup deadline for a passenger already aboard", () => {

@@ -80,9 +80,10 @@ function SelectedRoute({
       ? {
           path: proposedPath,
           color: feasible ? PROPOSED_ROUTE_COLOR : REJECTED_ROUTE_COLOR,
-          weight: 4,
+          weight: 5,
+          opacity: 0.9,
           dashed: !feasible,
-          zIndex: 6,
+          zIndex: 7,
         }
       : null,
   );
@@ -108,6 +109,9 @@ export function RouteLayer({
   selectedRoadIsRoad: boolean;
   visibleDriverIds: Set<string> | null;
 }) {
+  const insertion = selectedEvaluation?.insertion;
+  const showSolvedRoute = Boolean(insertion?.path && insertion.path.length >= 2);
+
   const committedRoutes = useMemo(() => {
     const pathFor = (ride: Ride, isSelected: boolean): LatLng[] => {
       if (isSelected && selectedRoadPath.length >= 2) {
@@ -122,10 +126,10 @@ export function RouteLayer({
         ? [
             {
               id: ride.id,
-              path: pathFor(ride, true),
+              path: showSolvedRoute ? [] : pathFor(ride, true),
               coveredPath: ride.coveredPath ?? [],
               dimmed: false,
-              emphasized: selectedRoadIsRoad,
+              emphasized: !showSolvedRoute && selectedRoadIsRoad,
             },
           ]
         : [];
@@ -133,12 +137,13 @@ export function RouteLayer({
 
     return scenario.rides.map((ride) => {
       const isSelected = ride.driverId === selectedDriverId;
+      const hideForSolved = isSelected && showSolvedRoute;
       return {
         id: ride.id,
-        path: pathFor(ride, isSelected),
+        path: hideForSolved ? [] : pathFor(ride, isSelected),
         coveredPath: ride.coveredPath ?? [],
         dimmed: visibleDriverIds !== null && !visibleDriverIds.has(ride.driverId),
-        emphasized: isSelected && selectedRoadIsRoad,
+        emphasized: isSelected && !hideForSolved && selectedRoadIsRoad,
       };
     });
   }, [
@@ -148,9 +153,8 @@ export function RouteLayer({
     selectedRoadPath,
     selectedRoadIsRoad,
     visibleDriverIds,
+    showSolvedRoute,
   ]);
-
-  const insertion = selectedEvaluation?.insertion;
 
   return (
     <>
@@ -163,7 +167,7 @@ export function RouteLayer({
       <SelectedRoute
         originalPath={insertion?.originalPath}
         proposedPath={insertion?.path}
-        feasible={insertion?.feasible ?? false}
+        feasible={selectedEvaluation?.finalStatus === "PASSED"}
       />
     </>
   );

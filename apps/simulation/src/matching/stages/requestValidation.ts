@@ -66,6 +66,17 @@ function validate(context: MatchingContext): MatchReason | undefined {
     });
   }
 
+  const alreadyOnRide = scenario.rides.some((ride) =>
+    ride.passengerIds.includes(request.passengerId),
+  );
+  if (alreadyOnRide) {
+    return reason(
+      "REQUEST_PASSENGER_ALREADY_ON_RIDE",
+      "This passenger is already on an active ride — create a new passenger for the next request",
+      { value: request.passengerId },
+    );
+  }
+
   if (request.vehiclePreference !== ANY_VEHICLE) {
     const known = scenario.vehicles.some(
       (vehicle) => vehicle.label === request.vehiclePreference,
@@ -82,13 +93,6 @@ function validate(context: MatchingContext): MatchReason | undefined {
   if (request.maxWaitMinutes < 0) {
     return reason("REQUEST_THRESHOLD_INVALID", "Maximum wait time cannot be negative", {
       value: request.maxWaitMinutes,
-      threshold: 0,
-    });
-  }
-
-  if (request.maxDetourPercent < 0) {
-    return reason("REQUEST_THRESHOLD_INVALID", "Maximum detour cannot be negative", {
-      value: request.maxDetourPercent,
       threshold: 0,
     });
   }

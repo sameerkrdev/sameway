@@ -175,8 +175,9 @@ describe("Delhi NCR morning pool", () => {
     expect(result.telemetry.matrixCalls).toBe(0);
 
     // One shared solo route for the new rider, plus one baseline per surviving
-    // driver that actually has a committed route. D001 is idle, so it has none.
-    expect(result.telemetry.routeCalls).toBe(2);
+    // driver with a committed route, plus one solved-route polyline per driver
+    // that clears stage 8 (for map display).
+    expect(result.telemetry.routeCalls).toBe(4);
 
     expect(result.optimizerTelemetry.calls).toBe(2);
     expect(result.optimizerTelemetry.unavailableReason).toBeNull();

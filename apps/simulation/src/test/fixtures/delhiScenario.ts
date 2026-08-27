@@ -186,7 +186,6 @@ export function buildDelhiScenario(): Scenario {
     requiresWheelchairAccess: false,
     luggageCount: 0,
     maxWaitMinutes: 6,
-    maxDetourPercent: 15,
     maxWalkingDistanceM: 300,
     priority: 0,
   };

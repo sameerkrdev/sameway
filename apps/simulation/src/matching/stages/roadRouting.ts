@@ -219,6 +219,7 @@ export const roadRoutingStage: MatchingStage = {
         baselineDistanceKm: baseline.distanceKm,
         baselineDurationMin: baseline.durationMin,
         baselineArrivalByStopId: baseline.arrivalByStopId,
+        baselinePath: baseline.path,
         soloDurationMin: solo.durationMin,
       };
 
@@ -256,6 +257,7 @@ async function computeBaseline(
   distanceKm: number;
   durationMin: number;
   arrivalByStopId: Map<string, number>;
+  path?: LatLng[];
 }> {
   const corridor = context.getCorridor(driverId);
   const arrivalByStopId = new Map<string, number>();
@@ -279,5 +281,6 @@ async function computeBaseline(
     distanceKm: route.distanceKm,
     durationMin: route.durationMin,
     arrivalByStopId,
+    path: route.path && route.path.length >= 2 ? route.path : [...polyline],
   };
 }

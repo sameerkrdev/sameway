@@ -185,6 +185,8 @@ export interface SolvedRoute {
   baselineDistanceKm: number;
   baselineDurationMin: number;
   baselineArrivalByStopId: Map<string, number>;
+  /** Road polyline for the pre-insertion route, when the routing engine returned one. */
+  baselinePath?: LatLng[];
   soloDurationMin: number;
 }
 

@@ -36,11 +36,16 @@ describe("detourLowerBound", () => {
     expect(context.getMetrics("d1").lowerBoundAdditionalKm).toBeLessThan(1);
   });
 
-  it("rejects when even the straight-line bound already exceeds the cap", async () => {
+  it("rejects a corridor extension when the lower bound exceeds the extension cap", async () => {
     const { outcome } = await run({
-      ...onRoute,
-      request: { pickup: { lat: 28.9, lng: 77.25 }, drop: { lat: 28.95, lng: 77.32 } },
-      settings: { maxAdditionalDistanceKm: 3 },
+      driverId: "d1",
+      driverLocation: { lat: 28.6, lng: 77.2 },
+      committedStops: [
+        { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 25, lat: 28.6, lng: 77.35 },
+      ],
+      passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayMin: 20 }],
+      request: { pickup: { lat: 28.6, lng: 77.25 }, drop: { lat: 28.6, lng: 77.55 } },
+      settings: { maxCorridorExtensionKm: 3 },
     });
 
     expect(outcome.verdicts[0]!.status).toBe("FAILED");
@@ -49,14 +54,30 @@ describe("detourLowerBound", () => {
 
   it("reports the bound and the threshold on the rejection", async () => {
     const { outcome } = await run({
-      ...onRoute,
-      request: { pickup: { lat: 28.9, lng: 77.25 }, drop: { lat: 28.95, lng: 77.32 } },
-      settings: { maxAdditionalDistanceKm: 3 },
+      driverId: "d1",
+      driverLocation: { lat: 28.6, lng: 77.2 },
+      committedStops: [
+        { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 25, lat: 28.6, lng: 77.35 },
+      ],
+      passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayMin: 20 }],
+      request: { pickup: { lat: 28.6, lng: 77.25 }, drop: { lat: 28.6, lng: 77.55 } },
+      settings: { maxCorridorExtensionKm: 3 },
     });
 
     const rejection = outcome.verdicts[0]!.reasons[0]!;
     expect(rejection.threshold).toBe(3);
     expect(Number(rejection.value)).toBeGreaterThan(3);
+  });
+
+  it("does not reject ordinary off-corridor pooling on added distance alone", async () => {
+    const { outcome } = await run({
+      ...onRoute,
+      request: { pickup: { lat: 28.9, lng: 77.25 }, drop: { lat: 28.95, lng: 77.32 } },
+      settings: { maxCorridorExtensionKm: 1 },
+    });
+
+    // Without corridor extension, stage 7 only shortlists — it does not fail.
+    expect(outcome.verdicts[0]!.status).toBe("PASSED");
   });
 
   it("shortlists no more sequences than maxRoutedInsertionsPerDriver", async () => {
@@ -88,13 +109,8 @@ describe("detourLowerBound", () => {
     expect(context.getSequences("d1")).toHaveLength(1);
   });
 
-  it("never prunes a candidate whose real added distance is within the cap", async () => {
-    // The admissibility property this stage rests on: the straight-line bound
-    // must never exceed the road distance for the same sequence, or the stage
-    // would prune candidates stage 10 would have accepted — a bug, not an
-    // optimisation. Asserted directly against the routing engine rather than
-    // against a tolerance factor, so it fails if the arithmetic ever inverts.
-    const context = makeContext({ ...onRoute, settings: { maxAdditionalDistanceKm: 50 } });
+  it("never estimates a straight-line bound above the road distance for the same sequence", async () => {
+    const context = makeContext(onRoute);
     await h3RouteCorridorStage.execute(context);
     await stopSequenceGenerationStage.execute(context);
 
@@ -125,7 +141,7 @@ describe("detourLowerBound", () => {
       ],
       passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayMin: 20 }],
       request: { pickup: { lat: 28.6, lng: 77.25 }, drop: { lat: 28.6, lng: 77.45 } },
-      settings: { maxAdditionalDistanceKm: 5, maxCorridorExtensionKm: 15 },
+      settings: { maxCorridorExtensionKm: 15 },
     });
 
     expect(outcome.verdicts[0]!.status).toBe("PASSED");
@@ -134,16 +150,13 @@ describe("detourLowerBound", () => {
 
 describe("detourLowerBound and idle drivers", () => {
   it("does not treat an idle driver's whole fare as a detour", async () => {
-    // Baseline route length is zero for an idle driver, so a naive bound reads
-    // the rider's entire trip as added distance and rejects every idle driver
-    // on any trip longer than the cap.
     const { outcome } = await run({
       driverId: "d2",
       driverLocation: { lat: 28.6, lng: 77.2 },
       committedStops: [],
       passengers: [],
       request: { pickup: { lat: 28.6, lng: 77.21 }, drop: { lat: 28.6, lng: 77.6 } },
-      settings: { maxAdditionalDistanceKm: 5 },
+      settings: { maxCorridorExtensionKm: 5 },
     });
 
     expect(outcome.verdicts[0]!.status).toBe("PASSED");

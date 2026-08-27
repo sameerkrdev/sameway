@@ -203,6 +203,7 @@ export function validateRequestDraft(request: RideSketchRequestDraft): string | 
 export function validateMultiRideSketch(
   drafts: RideSketchDraft[],
   request: RideSketchRequestDraft,
+  scenario?: Scenario,
 ): string | null {
   if (drafts.length === 0) {
     return "Add at least one driver/ride to the sketch.";
@@ -213,7 +214,21 @@ export function validateMultiRideSketch(
       return error;
     }
   }
-  return validateRequestDraft(request);
+  const requestError = validateRequestDraft(request);
+  if (requestError) {
+    return requestError;
+  }
+  if (request.requestPassengerId && scenario) {
+    const passengerId = request.requestPassengerId;
+    const onScenarioRide = scenario.rides.some((ride) => ride.passengerIds.includes(passengerId));
+    const onSketchRide = drafts.some((draft) =>
+      draft.stops.some((stop) => stop.passengerId === passengerId),
+    );
+    if (onScenarioRide || onSketchRide) {
+      return "Request passenger is already on a ride — create a new passenger (+).";
+    }
+  }
+  return null;
 }
 
 function resolveVehicle(
@@ -369,7 +384,7 @@ export function buildMultiRideSketchCommit(
   pendingPassengers: Passenger[],
   scenario: Scenario,
 ): MultiRideSketchCommit | { error: string } {
-  const error = validateMultiRideSketch(drafts, request);
+  const error = validateMultiRideSketch(drafts, request, scenario);
   if (error) {
     return { error };
   }
@@ -418,7 +433,6 @@ export function buildMultiRideSketchCommit(
       seatsRequired: existing?.seatsRequired ?? 1,
       poolingAllowed: existing?.poolingAllowed ?? true,
       maxWaitMinutes: existing?.maxWaitMinutes ?? 6,
-      maxDetourPercent: existing?.maxDetourPercent ?? 15,
     });
   }
 

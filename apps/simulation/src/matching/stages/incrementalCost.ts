@@ -1,3 +1,5 @@
+import type { LatLng } from "@/domain/entities";
+
 import { computeExistingPassengerDelays, computeExistingPickupDelays } from "../delays";
 import { computeSegmentOccupancy } from "../occupancy";
 import { reason } from "../reasons";
@@ -25,7 +27,7 @@ export const incrementalCostStage: MatchingStage = {
   name: "Incremental Cost",
   description: "Measures what every party gains or loses. Rejects nothing.",
 
-  execute(context: MatchingContext): Promise<StageOutcome> {
+  async execute(context: MatchingContext): Promise<StageOutcome> {
     const verdicts: DriverVerdict[] = [];
 
     for (const driverId of context.liveDriverIds) {
@@ -99,6 +101,7 @@ export const incrementalCostStage: MatchingStage = {
       });
 
       const metrics = context.getMetrics(driverId);
+      const { path, originalPath } = await resolveInsertionPaths(context, corridor.polyline[0]!, solution);
 
       const insertion: RouteInsertionResult = {
         feasible: true,
@@ -116,6 +119,8 @@ export const incrementalCostStage: MatchingStage = {
         existingPassengerDelays: [...delays, ...pickupDelays],
         maximumExistingPassengerDelayMin: maximumDelayMin,
         occupancyBySegment: occupancy.segments,
+        path,
+        originalPath,
         attemptStats: {
           enumerated: metrics.enumeratedSequences ?? 0,
           waypointLimitPruned: 0,
@@ -142,9 +147,51 @@ export const incrementalCostStage: MatchingStage = {
       });
     }
 
-    return Promise.resolve({ verdicts });
+    return { verdicts };
   },
 };
+
+/** Google Routes polylines for the baseline and optimizer stop sequence. */
+async function resolveInsertionPaths(
+  context: MatchingContext,
+  vehicleStart: LatLng,
+  solution: {
+    stops: { location: LatLng }[];
+    baselinePath?: LatLng[];
+  },
+): Promise<{ path: LatLng[]; originalPath: LatLng[] }> {
+  const solvedWaypoints = [vehicleStart, ...solution.stops.map((stop) => stop.location)];
+  const originalPath =
+    solution.baselinePath && solution.baselinePath.length >= 2
+      ? solution.baselinePath
+      : solvedWaypoints.slice(0, Math.min(2, solvedWaypoints.length));
+
+  try {
+    const routed = await context.routing.getRoute(solvedWaypoints);
+    const path =
+      routed.path && routed.path.length >= 2 ? routed.path : dedupeWaypoints(solvedWaypoints);
+    return { path, originalPath };
+  } catch {
+    return { path: dedupeWaypoints(solvedWaypoints), originalPath };
+  }
+}
+
+function dedupeWaypoints(waypoints: LatLng[]): LatLng[] {
+  if (waypoints.length === 0) {
+    return [];
+  }
+
+  const deduped: LatLng[] = [waypoints[0]!];
+  for (let index = 1; index < waypoints.length; index += 1) {
+    const point = waypoints[index]!;
+    const previous = deduped[deduped.length - 1]!;
+    if (Math.abs(point.lat - previous.lat) > 1e-7 || Math.abs(point.lng - previous.lng) > 1e-7) {
+      deduped.push(point);
+    }
+  }
+
+  return deduped;
+}
 
 function round(value: number, digits: number): number {
   const factor = 10 ** digits;

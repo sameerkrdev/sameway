@@ -136,7 +136,6 @@ export interface RideRequest {
   requiresWheelchairAccess: boolean;
   luggageCount: number;
   maxWaitMinutes: number;
-  maxDetourPercent: number;
   maxWalkingDistanceM: number;
   priority: number;
 }
@@ -200,8 +199,6 @@ export interface MatchingSettings {
   estimatedSpeedKmh: number;
 
   // Route feasibility.
-  maxDetourPercent: number;
-  maxAdditionalDistanceKm: number;
   /** Same-direction drop beyond the last committed stop (corridor extension). */
   maxCorridorExtensionKm: number;
   maxAdditionalDurationMin: number;

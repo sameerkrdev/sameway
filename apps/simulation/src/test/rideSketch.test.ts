@@ -155,7 +155,8 @@ describe("rideSketch", () => {
 
   it("applies multiple rides plus a shared new request", () => {
     const scenario = baseScenario();
-    const pending = makePassenger({ id: "P_NEW", name: "Bea" });
+    const pendingOnRide = makePassenger({ id: "P_NEW", name: "Bea" });
+    const pendingRequest = makePassenger({ id: "P_REQ", name: "Casey" });
     const rideA = {
       ...loadDraftFromScenario(scenario, "D001"),
     };
@@ -188,9 +189,9 @@ describe("rideSketch", () => {
       {
         requestPickup: { lat: 28.62, lng: 77.21 },
         requestDrop: { lat: 28.66, lng: 77.25 },
-        requestPassengerId: "P_NEW",
+        requestPassengerId: "P_REQ",
       },
-      [pending],
+      [pendingOnRide, pendingRequest],
       scenario,
     );
 
@@ -202,7 +203,49 @@ describe("rideSketch", () => {
     expect(commit.rides).toHaveLength(2);
     expect(commit.rides[0]?.driver.id).toBe("D001");
     expect(commit.rides[1]?.driver.id).not.toBe("D001");
-    expect(commit.request?.passengerId).toBe("P_NEW");
+    expect(commit.request?.passengerId).toBe("P_REQ");
     expect(commit.sharedPassengers.some((passenger) => passenger.id === "P001")).toBe(true);
+  });
+
+  it("rejects a request passenger who is already on a sketched ride", () => {
+    const scenario = baseScenario();
+    const pending = makePassenger({ id: "P_NEW", name: "Bea" });
+    const ride = {
+      ...emptyRideSketchDraft("Ride 1", scenario),
+      isNewDriver: true,
+      vehicleId: "V1",
+      hasActiveRide: true,
+      vehicleLocation: { lat: 28.64, lng: 77.23 },
+      stops: [
+        {
+          id: "b1",
+          passengerId: "P_NEW",
+          type: "PICKUP" as const,
+          location: { lat: 28.642, lng: 77.232 },
+        },
+        {
+          id: "b2",
+          passengerId: "P_NEW",
+          type: "DROP" as const,
+          location: { lat: 28.65, lng: 77.24 },
+        },
+      ],
+    };
+
+    const commit = buildMultiRideSketchCommit(
+      [ride],
+      {
+        requestPickup: { lat: 28.62, lng: 77.21 },
+        requestDrop: { lat: 28.66, lng: 77.25 },
+        requestPassengerId: "P_NEW",
+      },
+      [pending],
+      scenario,
+    );
+
+    expect("error" in commit).toBe(true);
+    if ("error" in commit) {
+      expect(commit.error).toMatch(/already on a ride/i);
+    }
   });
 });

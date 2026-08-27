@@ -95,18 +95,6 @@ export function SettingsPanel() {
       <Section title="Route feasibility">
         <div className="grid grid-cols-2 gap-2">
           <NumberField
-            label="Max detour (%)"
-            value={settings.maxDetourPercent}
-            min={0}
-            onChange={(value) => set("maxDetourPercent", value)}
-          />
-          <NumberField
-            label="Max added distance (km)"
-            value={settings.maxAdditionalDistanceKm}
-            min={0}
-            onChange={(value) => set("maxAdditionalDistanceKm", value)}
-          />
-          <NumberField
             label="Max added duration (min)"
             value={settings.maxAdditionalDurationMin}
             min={0}
@@ -131,6 +119,12 @@ export function SettingsPanel() {
             onChange={(value) => set("maxNewPassengerRideDetourMin", value)}
           />
           <NumberField
+            label="Max corridor extension (km)"
+            value={settings.maxCorridorExtensionKm}
+            min={0}
+            onChange={(value) => set("maxCorridorExtensionKm", value)}
+          />
+          <NumberField
             label="Max pooled passengers"
             value={settings.maxPooledPassengers}
             min={1}
@@ -138,8 +132,7 @@ export function SettingsPanel() {
           />
         </div>
         <p className="text-[11px] text-[var(--muted-foreground)]">
-          Existing rider delay catches what aggregate detour cannot: a route can be barely longer
-          overall while making one passenger badly late.
+          Feasibility is judged in minutes (and corridor-extension km), not detour percent.
         </p>
       </Section>
 

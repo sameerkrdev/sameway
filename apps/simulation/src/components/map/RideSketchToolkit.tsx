@@ -98,12 +98,36 @@ export function RideSketchToolkit() {
     ];
   }, [pendingPassengers, scenario.passengers]);
 
+  const passengersOnRide = useMemo(() => {
+    const ids = new Set<string>();
+    for (const ride of scenario.rides) {
+      for (const passengerId of ride.passengerIds) {
+        ids.add(passengerId);
+      }
+    }
+    for (const slot of slots) {
+      for (const stop of slot.stops) {
+        ids.add(stop.passengerId);
+      }
+    }
+    return ids;
+  }, [scenario.rides, slots]);
+
+  const requestPassengerChoices = useMemo(
+    () => passengers.filter((passenger) => !passengersOnRide.has(passenger.id)),
+    [passengers, passengersOnRide],
+  );
+
   const activeTool = TOOLS.find((entry) => entry.id === tool);
-  const validation = validateMultiRideSketch(slots, {
-    requestPickup,
-    requestDrop,
-    requestPassengerId,
-  });
+  const validation = validateMultiRideSketch(
+    slots,
+    {
+      requestPickup,
+      requestDrop,
+      requestPassengerId,
+    },
+    scenario,
+  );
 
   function applyAll() {
     const result = applyCurrentRideSketch({ discardAfter: true, exitSketchMode: true });
@@ -416,18 +440,31 @@ export function RideSketchToolkit() {
         <span className="text-[11px] font-medium text-[var(--muted-foreground)]">
           New request (for matching)
         </span>
-        <select
-          className="h-8 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs"
-          value={requestPassengerId ?? ""}
-          onChange={(event) => setRequestPassenger(event.target.value || null)}
-        >
-          <option value="">Request passenger…</option>
-          {passengers.map((passenger) => (
-            <option key={passenger.id} value={passenger.id}>
-              {passenger.id}
-            </option>
-          ))}
-        </select>
+        <div className="flex gap-1">
+          <select
+            className="h-8 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs"
+            value={requestPassengerId ?? ""}
+            onChange={(event) => setRequestPassenger(event.target.value || null)}
+          >
+            <option value="">Request passenger…</option>
+            {requestPassengerChoices.map((passenger) => (
+              <option key={passenger.id} value={passenger.id}>
+                {passenger.id}
+              </option>
+            ))}
+          </select>
+          <Button
+            size="iconSm"
+            variant="outline"
+            title="Create a new passenger for this request"
+            onClick={() => {
+              const passenger = addPassenger(scenario);
+              setRequestPassenger(passenger.id);
+            }}
+          >
+            <UserPlus className="size-3.5" />
+          </Button>
+        </div>
         <div className="flex items-center justify-between gap-2">
           <p className="text-[11px] text-[var(--muted-foreground)]">
             Pickup {requestPickup ? "✓" : "—"} · Drop {requestDrop ? "✓" : "—"}

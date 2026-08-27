@@ -192,11 +192,19 @@ export function toShipmentModel(
     for (let index = 0; index < precedence.length - 1; index += 1) {
       const first = precedence[index]!;
       const second = precedence[index + 1]!;
+      const firstIndex = resolveShipmentIndex(first.shipmentId);
+      const secondIndex = resolveShipmentIndex(second.shipmentId);
+
+      // Pickup-before-delivery is implicit per shipment. OptimizeTours rejects
+      // first_index == second_index (`INVALID_REQUEST` on precedence_rules).
+      if (firstIndex === secondIndex) {
+        continue;
+      }
 
       rules.push({
-        firstIndex: resolveShipmentIndex(first.shipmentId),
+        firstIndex,
         firstIsDelivery: first.type === "DROP",
-        secondIndex: resolveShipmentIndex(second.shipmentId),
+        secondIndex,
         secondIsDelivery: second.type === "DROP",
         offsetDuration: "0s",
       });

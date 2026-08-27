@@ -48,8 +48,6 @@ class DeadlineBlindOptimizerEngine implements OptimizerEngine {
 
 /** Wide enough that only the limit under test can be the one that fires. */
 const permissive = {
-  maxDetourPercent: 10000,
-  maxAdditionalDistanceKm: 10000,
   maxCorridorExtensionKm: 10000,
   maxAdditionalDurationMin: 10000,
   maxExistingPassengerDelayMin: 10000,
@@ -76,26 +74,22 @@ describe("hardConstraints", () => {
     expect(outcome.verdicts[0]!.reasons[0]!.code).toBe("ROUTE_FEASIBLE");
   });
 
-  it("rejects on detour percent before any other limit", async () => {
-    const context = await runToIncrementalCost({
-      ...pooled,
-      settings: { ...permissive, maxDetourPercent: 0 },
+  it("passes ordinary pooling without a detour-percent or added-km cap", async () => {
+    const context = await runToIncrementalCost({ ...pooled, settings: permissive });
+    context.recordMetrics("d1", {
+      detourPercent: 50,
+      additionalDistanceKm: 10,
+      corridorExtensionKm: 0,
     });
-    context.recordMetrics("d1", { detourPercent: 50, corridorExtensionKm: 0 });
     const outcome = await hardConstraintsStage.execute(context);
 
-    expect(outcome.verdicts[0]!.reasons[0]!.code).toBe("ROUTE_DETOUR_TOO_HIGH");
+    expect(outcome.verdicts[0]!.status).toBe("PASSED");
   });
 
-  it("skips detour percent for a same-direction corridor extension", async () => {
+  it("passes a same-direction corridor extension under the extension cap", async () => {
     const context = await runToIncrementalCost({
       ...eastboundExtension,
-      settings: {
-        ...permissive,
-        maxDetourPercent: 0,
-        maxAdditionalDistanceKm: 5,
-        maxCorridorExtensionKm: 15,
-      },
+      settings: { ...permissive, maxCorridorExtensionKm: 15 },
     });
     const outcome = await hardConstraintsStage.execute(context);
 
@@ -103,15 +97,18 @@ describe("hardConstraints", () => {
     expect((context.getMetrics("d1").corridorExtensionKm ?? 0)).toBeGreaterThan(5);
   });
 
-  it("rejects on the driver's added distance", async () => {
+  it("rejects a corridor extension that exceeds maxCorridorExtensionKm", async () => {
     const context = await runToIncrementalCost({
-      ...pooled,
-      settings: { ...permissive, maxAdditionalDistanceKm: 0 },
+      ...eastboundExtension,
+      settings: { ...permissive, maxCorridorExtensionKm: 1 },
     });
-    context.recordMetrics("d1", { additionalDistanceKm: 10, corridorExtensionKm: 0 });
+    context.recordMetrics("d1", {
+      corridorExtensionKm: 10,
+      additionalDistanceKm: 10,
+    });
     const outcome = await hardConstraintsStage.execute(context);
 
-    expect(outcome.verdicts[0]!.reasons[0]!.code).toBe("ADDITIONAL_DISTANCE_TOO_HIGH");
+    expect(outcome.verdicts[0]!.reasons[0]!.code).toBe("CORRIDOR_EXTENSION_TOO_LONG");
   });
 
   it("rejects on an existing passenger's own budget, not the global ceiling", async () => {

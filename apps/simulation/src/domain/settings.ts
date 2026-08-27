@@ -38,14 +38,12 @@ export const DEFAULT_SETTINGS: MatchingSettings = {
   // Straight-line ETA estimation for the stage 6 pre-filter only.
   estimatedSpeedKmh: 24,
 
-  maxDetourPercent: 15,
-  maxAdditionalDistanceKm: 5,
   /** Max forward extension past the last committed stop (same-direction pooling). */
   maxCorridorExtensionKm: 15,
   maxAdditionalDurationMin: 12,
-  maxExistingPassengerDelayMin: 8,
-  maxNewPassengerPickupDelayMin: 6,
-  maxNewPassengerRideDetourMin: 10,
+  maxExistingPassengerDelayMin: 12,
+  maxNewPassengerPickupDelayMin: 10,
+  maxNewPassengerRideDetourMin: 12,
 
   maxPooledPassengers: 4,
 
