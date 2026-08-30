@@ -99,6 +99,9 @@ export function DebugConsole({ run }: { run: MatchingRun }) {
           <Metric label="Candidates" value={String(run.result.summary.candidates)} />
           <Metric label="Matched" value={String(run.result.summary.passed)} />
           <Metric label="Rejected" value={String(run.result.summary.rejected)} />
+          {run.result.summary.notEvaluated > 0 ? (
+            <Metric label="Not evaluated" value={String(run.result.summary.notEvaluated)} />
+          ) : null}
         </div>
         <div className="mt-1 flex flex-wrap gap-1">
           <Badge variant="outline">run {run.id}</Badge>

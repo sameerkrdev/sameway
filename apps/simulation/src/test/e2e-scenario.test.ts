@@ -98,9 +98,9 @@ describe("Delhi NCR morning pool", () => {
     }));
     expect(counts).toEqual([
       { id: "requestValidation", out: 8 },
-      { id: "basicEligibility", out: 5 },
-      { id: "operationalState", out: 5 },
-      { id: "h3RouteCorridor", out: 4 },
+      { id: "h3RouteCorridor", out: 7 },
+      { id: "basicEligibility", out: 4 },
+      { id: "operationalState", out: 4 },
       { id: "pickupRouteDistance", out: 3 },
       { id: "directionCompatibility", out: 2 },
       { id: "stopSequenceGeneration", out: 2 },
@@ -112,10 +112,11 @@ describe("Delhi NCR morning pool", () => {
       { id: "scoring", out: 2 },
       { id: "commit", out: 2 },
     ]);
-    // Candidates now come from the corridor stage rather than H3 ring growth.
-    expect(result.summary.candidates).toBe(4);
+    // Layer 1 candidates: rides whose corridor intersected the pickup search.
+    expect(result.summary.candidates).toBe(7);
     expect(result.summary.passed).toBe(2);
-    expect(result.summary.rejected).toBe(6);
+    expect(result.summary.rejected).toBe(5);
+    expect(result.summary.notEvaluated).toBe(1);
   });
 
   it("passes D007 for textbook pooling on an eastbound committed route", () => {
@@ -136,11 +137,11 @@ describe("Delhi NCR morning pool", () => {
     expect(evaluationFor(result, "D006").failedAtStageId).toBe("directionCompatibility");
   });
 
-  it("rejects a driver whose corridor never reaches the pickup", () => {
-    // The load-bearing property of stage 2: matching is against the ride's
-    // remaining route, not the driver's raw proximity.
-    expect(failureCodes(result, "D008")).toEqual(["CORRIDOR_NO_MATCH"]);
-    expect(evaluationFor(result, "D008").failedAtStageId).toBe("h3RouteCorridor");
+  it("skips a driver outside the corridor search", () => {
+    // D008 is idle 10 km away — Layer 1 never returns that ride id.
+    expect(failureCodes(result, "D008")).toEqual([]);
+    expect(evaluationFor(result, "D008").finalStatus).toBe("NOT_EVALUATED");
+    expect(stageStatus(result, "D008", "h3RouteCorridor")).toBe("NOT_EVALUATED");
   });
 
   it("rejects a driver the corridor reached but the geometry does not", () => {
@@ -160,7 +161,6 @@ describe("Delhi NCR morning pool", () => {
       DRIVER_OFFLINE: 1,
       VEHICLE_TYPE_MISMATCH: 1,
       INSUFFICIENT_CAPACITY: 1,
-      CORRIDOR_NO_MATCH: 1,
       PICKUP_TOO_FAR_FROM_ROUTE: 1,
       BEARING_INCOMPATIBLE: 1,
     });

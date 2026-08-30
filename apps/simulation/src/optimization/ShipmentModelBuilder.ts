@@ -142,10 +142,6 @@ export function buildOptimizeToursRequest(
     const shipment: OptimizerShipment = {
       id: shipmentIdFor(passengerId),
       passengerId,
-      // An onboard passenger has no remaining pickup, so the vehicle's own
-      // start position stands in for it: they are collected where the vehicle
-      // already is, at time zero.
-      pickup: stops.pickup?.location ?? vehicleStart,
       drop: drop.location,
       seats: passenger.seatsRequired,
       dropDeadlineMin: dropFloor + passenger.maxDropDelayMin,
@@ -153,6 +149,7 @@ export function buildOptimizeToursRequest(
     };
 
     if (stops.pickup) {
+      shipment.pickup = stops.pickup.location;
       const pickupFloor = Math.max(
         stops.pickup.originalEtaMin,
         travelFloor.pickup.get(passengerId) ?? 0,

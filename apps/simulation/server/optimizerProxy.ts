@@ -9,7 +9,8 @@ const SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 
 export interface ProxyShipment {
   id: string;
-  pickup: { lat: number; lng: number };
+  /** Absent = already onboard; the wire model is delivery-only (pre-loaded). */
+  pickup?: { lat: number; lng: number };
   drop: { lat: number; lng: number };
   seats: number;
   pickupDeadlineMin?: number;
@@ -105,22 +106,6 @@ export function toShipmentModel(
   nowMs: number,
 ): Record<string, unknown> {
   const shipments = request.shipments.map((shipment) => {
-    const pickupVisit: Record<string, unknown> = {
-      arrivalWaypoint: { location: { latLng: { latitude: shipment.pickup.lat, longitude: shipment.pickup.lng } } },
-    };
-
-    const pickupWindow: Record<string, unknown> = {};
-    if (shipment.pickupDeadlineMin !== undefined) {
-      pickupWindow.endTime = isoAt(nowMs, shipment.pickupDeadlineMin);
-    }
-    if (shipment.softPickupDeadlineMin !== undefined) {
-      pickupWindow.softEndTime = isoAt(nowMs, shipment.softPickupDeadlineMin);
-      pickupWindow.costPerHourAfterSoftEndTime = shipment.softDeadlineCostPerHour ?? 50;
-    }
-    if (Object.keys(pickupWindow).length > 0) {
-      pickupVisit.timeWindows = [pickupWindow];
-    }
-
     const deliveryVisit: Record<string, unknown> = {
       arrivalWaypoint: { location: { latLng: { latitude: shipment.drop.lat, longitude: shipment.drop.lng } } },
     };
@@ -130,10 +115,32 @@ export function toShipmentModel(
     }
 
     const model: Record<string, unknown> = {
-      pickups: [pickupVisit],
       deliveries: [deliveryVisit],
       loadDemands: { seats: { amount: String(shipment.seats) } },
     };
+
+    // Delivery-only = already onboard (pre-loaded). Emitting a dummy pickup
+    // at vehicle start would make this a pickup-delivery shipment, and
+    // OptimizeTours then rejects an injected route that only has the drop.
+    if (shipment.pickup) {
+      const pickupVisit: Record<string, unknown> = {
+        arrivalWaypoint: { location: { latLng: { latitude: shipment.pickup.lat, longitude: shipment.pickup.lng } } },
+      };
+
+      const pickupWindow: Record<string, unknown> = {};
+      if (shipment.pickupDeadlineMin !== undefined) {
+        pickupWindow.endTime = isoAt(nowMs, shipment.pickupDeadlineMin);
+      }
+      if (shipment.softPickupDeadlineMin !== undefined) {
+        pickupWindow.softEndTime = isoAt(nowMs, shipment.softPickupDeadlineMin);
+        pickupWindow.costPerHourAfterSoftEndTime = shipment.softDeadlineCostPerHour ?? 50;
+      }
+      if (Object.keys(pickupWindow).length > 0) {
+        pickupVisit.timeWindows = [pickupWindow];
+      }
+
+      model.pickups = [pickupVisit];
+    }
 
     // A null penalty means mandatory. Omitting the field entirely is how the
     // API expresses that; sending `null` would be rejected.

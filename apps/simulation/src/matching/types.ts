@@ -257,7 +257,7 @@ export interface DriverEvaluation {
   scoreBreakdown?: ScoreBreakdown;
   commitPlan?: CommitPlan;
   finalScore?: number;
-  finalStatus: "PASSED" | "FAILED";
+  finalStatus: EvaluationStatus;
   failedAtStageId?: StageId;
   rank?: number;
 }
@@ -272,9 +272,12 @@ export interface RejectionGroup {
 
 export interface MatchingSummary {
   totalDrivers: number;
+  /** Drivers whose corridor matched the pickup (Layer 1 output). */
   candidates: number;
   passed: number;
   rejected: number;
+  /** Drivers outside the Layer 1 corridor search. */
+  notEvaluated: number;
   bestDriverId?: string;
   bestScore?: number;
   rejectionsByCode: RejectionGroup[];
@@ -377,7 +380,8 @@ export interface StageOutcome {
   /** `requestValidation` only: aborts the whole run. */
   requestRejection?: MatchReason;
   /**
-   * A discovery stage only (stage 2, `h3RouteCorridor`): the candidate set.
+   * A discovery stage only (`h3RouteCorridor`): ride ids surfaced by Layer 1
+   * corridor lookup. Undiscovered drivers are NOT_EVALUATED by the engine.
    * Live drivers absent from this list are failed with the stage's rejection
    * reason. Unused while stage 2 is a placeholder; Task 11 populates it.
    */

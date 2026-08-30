@@ -1,6 +1,6 @@
 import { ANY_VEHICLE, type Driver, type Passenger } from "@/domain/entities";
 import { haversineKm } from "@/lib/geo";
-import { getCellsByRing, getH3CellFor, getH3Distance, type H3Index } from "@/lib/h3";
+import { getCellsByRing, getH3CellFor } from "@/lib/h3";
 
 import { buildCorridors, indexCorridorsByCell } from "../corridor";
 import { reason } from "../reasons";
@@ -19,14 +19,11 @@ interface RingNote {
 const CORRIDOR_RING_PADDING = 1;
 
 /**
- * Stage 2. Does the pickup fall near this ride's *remaining route*?
+ * Layer 1 — candidate generation. Does the pickup fall near this ride's
+ * *remaining route*?
  *
- * This is the single biggest correction the project made across its
- * iterations. Driver-to-pickup distance is a bad proxy the moment a vehicle
- * has a route: a driver 8 km away can be an excellent match if their corridor
- * runs straight past the pickup, and a driver 200 m away is useless if that
- * 200 m is behind them. The corridor is therefore built from remaining stops
- * only, which is what makes the behind-the-vehicle case reject.
+ * Mirrors Redis `h3_cell → [ride_ids]`: only discovered rides continue;
+ * continue; undiscovered drivers are marked NOT_EVALUATED by the engine.
  */
 export const h3RouteCorridorStage: MatchingStage = {
   id: "h3RouteCorridor",
@@ -132,44 +129,6 @@ export const h3RouteCorridorStage: MatchingStage = {
       }
     }
 
-    // Everything the ring search never reached is rejected here, by name.
-    // The engine has a generic `candidateDriverIds` fallback that would do
-    // this, but it can only say "outside the H3 search area" — a statement
-    // about the search, not about this ride. The accurate finding is that the
-    // pickup is off this ride's corridor, so the stage owns its own rejection
-    // and reports the hop count that made it one.
-    for (const driverId of context.liveDriverIds) {
-      if (discovered.has(driverId)) {
-        continue;
-      }
-
-      const driver = context.getDriver(driverId);
-      if (!driver) {
-        continue;
-      }
-
-      const driverCell = getH3CellFor(driver.location, resolution);
-      const gridDistance = hopsBetween(pickupCell, driverCell, settings.maxH3Ring);
-
-      context.recordMetrics(driverId, {
-        driverCell,
-        pickupCell,
-        h3GridDistance: gridDistance,
-        straightLineKm: haversineKm(driver.location, request.pickup),
-      });
-
-      verdicts.push({
-        driverId,
-        status: "FAILED",
-        reasons: [
-          reason("CORRIDOR_NO_MATCH", "Pickup does not fall on this ride's remaining corridor", {
-            value: gridDistance,
-            threshold: settings.maxH3Ring,
-          }),
-        ],
-      });
-    }
-
     return Promise.resolve({
       verdicts,
       candidateDriverIds: [...discovered],
@@ -185,24 +144,6 @@ export const h3RouteCorridorStage: MatchingStage = {
     });
   },
 };
-
-/**
- * Grid hops between two cells, as a value safe to report.
- *
- * `gridDistance` is exact but refuses to answer for cells far enough apart to
- * span an icosahedron face boundary. When it does, the only honest thing left
- * to say is "further than we searched", so this returns a lower bound of
- * `maxRing + 1` rather than inventing a precise-looking number. Either way the
- * result is a unitless hop count and is only ever compared against another
- * hop count.
- */
-function hopsBetween(pickupCell: H3Index, driverCell: H3Index, maxRing: number): number {
-  try {
-    return getH3Distance(pickupCell, driverCell);
-  } catch {
-    return maxRing + 1;
-  }
-}
 
 /**
  * The counting heuristic that decides when ring expansion may stop.

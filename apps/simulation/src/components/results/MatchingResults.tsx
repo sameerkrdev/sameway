@@ -89,6 +89,13 @@ export function MatchingResults() {
         <Metric label="H3 candidates" value={String(result.summary.candidates)} />
         <Metric label="Passed all filters" value={String(result.summary.passed)} />
         <Metric label="Rejected" value={String(result.summary.rejected)} />
+        {result.summary.notEvaluated > 0 ? (
+          <Metric
+            label="Not evaluated"
+            value={String(result.summary.notEvaluated)}
+            hint="Outside the corridor search (Layer 1)"
+          />
+        ) : null}
         {result.summary.bestDriverId ? (
           <>
             <Separator className="my-1" />

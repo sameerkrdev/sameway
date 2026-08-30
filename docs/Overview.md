@@ -50,20 +50,25 @@ Don't ask "is this driver near the new passenger?" Ask "does this **ride's remai
 
 ## The Matching Pipeline
 
+The matching pipeline runs **Layer 1 (corridor discovery) before eligibility filters**,
+the same order as a Redis lookup. Overview stage numbers in brackets refer to the
+conceptual pipeline after candidate generation.
+
 ```
-0.  Basic eligibility        — capacity, online status, service area (free)
-1.  Operational-state filter — is a pickup already committed?
-2.  H3 route-corridor filter — cheap geographic funnel
-3.  Pickup → route distance  — geometric proximity
-4.  Direction/destination compatibility — bearing, route position
-5.  Generate legal stop sequences — precedence + capacity constrained
-6.  Flexible pickup time-window filter — protect committed pickups
-7.  Cheap geometry/detour lower-bound filter — prune before routing
-8.  Actual road routing      — Method A or Method B (see below)
-9.  Incremental cost         — Δtime/Δdistance per driver & passenger
-10. Hard constraints         — binary accept/reject
-11. Scoring                  — our weighted formula, argmin(score)
-12. Commit                   — update ActiveRide, becomes new baseline
+(—)  Request validation
+2.   H3 route-corridor filter — Layer 1: cheap geographic funnel (runs first)
+0.   Basic eligibility        — capacity, online status, service area (free)
+1.   Operational-state filter — is a pickup already committed?
+3.   Pickup → route distance  — geometric proximity
+4.   Direction/destination compatibility — bearing, route position
+5.   Generate legal stop sequences — precedence + capacity constrained
+6.   Flexible pickup time-window filter — protect committed pickups
+7.   Cheap geometry/detour lower-bound filter — prune before routing
+8.   Actual road routing      — Method A or Method B (see below)
+9.   Incremental cost         — Δtime/Δdistance per driver & passenger
+10.  Hard constraints         — binary accept/reject
+11.  Scoring                  — our weighted formula, argmin(score)
+12.  Commit                   — update ActiveRide, becomes new baseline
 ```
 
 Key refinements baked into this pipeline:
@@ -212,11 +217,11 @@ Any candidate stop sequence that inserts the new passenger _before_ B's pickup i
 
 ---
 
-## Stage 2 — H3 Route-Corridor Filter
+## Stage 2 — H3 Route-Corridor Filter (Layer 1 — runs first)
 
 **What it checks:** Does the new passenger's pickup fall near the **ride's remaining route**, not near the driver's current GPS point.
 
-**Why it exists:** This is the single biggest correction made across the project's iterations. Driver-to-pickup distance is a bad proxy the moment a vehicle has an existing route — a driver can be 8km away in raw distance but have a route that passes directly by the new pickup.
+**Why it runs first:** At scale you cannot eligibility-filter every active ride in the city. Redis indexes `h3_cell → [ride_ids]` from route segments; the matching request looks up cells around the pickup and only those ride ids enter the funnel. Basic eligibility and operational state run on that small candidate set.
 
 **How it works:**
 

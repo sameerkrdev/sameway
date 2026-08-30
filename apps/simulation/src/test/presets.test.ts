@@ -83,18 +83,15 @@ describe("scenario presets", () => {
 });
 
 describe("Corridor Behind Vehicle", () => {
-  it("rejects a pickup on the route the vehicle has already driven", async () => {
-    // The Overview's Example 11, and the single most important corridor
-    // regression: the pickup sits exactly on this ride's road, but behind the
-    // vehicle. Proximity to the historical route must never make a ride look
-    // compatible.
+  it("does not evaluate a driver whose corridor never intersects the pickup search", async () => {
+    // The Overview's Example 11: pickup on historical road behind the vehicle.
+    // Layer 1 never returns that ride id — the driver is not evaluated.
     const { result } = await runPreset("corridor-behind-vehicle");
 
     const behind = result.evaluations.find((entry) => entry.driverId === "D_BEHIND")!;
 
-    expect(behind.finalStatus).toBe("FAILED");
-    expect(behind.failedAtStageId).toBe("h3RouteCorridor");
-    expect(behind.reasons.map((entry) => entry.code)).toContain("CORRIDOR_NO_MATCH");
+    expect(behind.finalStatus).toBe("NOT_EVALUATED");
+    expect(behind.reasons).toHaveLength(0);
   });
 
   it("still matches the driver running the same corridor who has not passed it", async () => {

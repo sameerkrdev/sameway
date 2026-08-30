@@ -15,8 +15,8 @@ export class OptimizerCache {
       .map((shipment) =>
         [
           shipment.id,
-          shipment.pickup.lat,
-          shipment.pickup.lng,
+          shipment.pickup?.lat ?? "onboard",
+          shipment.pickup?.lng ?? "",
           shipment.drop.lat,
           shipment.drop.lng,
           shipment.seats,

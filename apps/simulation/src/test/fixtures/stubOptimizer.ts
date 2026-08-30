@@ -66,10 +66,14 @@ export class StubOptimizerEngine implements OptimizerEngine {
 }
 
 function enumerateLegalOrderings(request: OptimizeToursRequest): Candidate[] {
-  const events = request.shipments.flatMap((shipment, index) => [
-    { shipmentIndex: index, type: "PICKUP" as const },
-    { shipmentIndex: index, type: "DROP" as const },
-  ]);
+  const events = request.shipments.flatMap((shipment, index) =>
+    shipment.pickup
+      ? [
+          { shipmentIndex: index, type: "PICKUP" as const },
+          { shipmentIndex: index, type: "DROP" as const },
+        ]
+      : [{ shipmentIndex: index, type: "DROP" as const }],
+  );
 
   const results: Candidate[] = [];
 
@@ -82,12 +86,16 @@ function enumerateLegalOrderings(request: OptimizeToursRequest): Candidate[] {
     for (let index = 0; index < remaining.length; index += 1) {
       const event = remaining[index]!;
 
-      // Precedence: a drop may only follow its own pickup.
-      if (
-        event.type === "DROP" &&
-        !built.some((done) => done.shipmentIndex === event.shipmentIndex && done.type === "PICKUP")
-      ) {
-        continue;
+      // Precedence: a drop may only follow its own pickup, unless the
+      // shipment is delivery-only (already aboard / pre-loaded).
+      if (event.type === "DROP") {
+        const shipment = request.shipments[event.shipmentIndex]!;
+        if (
+          shipment.pickup &&
+          !built.some((done) => done.shipmentIndex === event.shipmentIndex && done.type === "PICKUP")
+        ) {
+          continue;
+        }
       }
 
       walk([...remaining.slice(0, index), ...remaining.slice(index + 1)], [...built, event]);
@@ -147,16 +155,33 @@ function respectsRouteConstraints(request: OptimizeToursRequest, candidate: Cand
   return true;
 }
 
+function visitLocation(
+  shipment: OptimizeToursRequest["shipments"][number],
+  type: "PICKUP" | "DROP",
+) {
+  if (type === "PICKUP") {
+    if (!shipment.pickup) {
+      throw new Error(`Pickup visit for delivery-only shipment ${shipment.id}`);
+    }
+    return shipment.pickup;
+  }
+  return shipment.drop;
+}
+
 /** Road cost, or Infinity if capacity or a hard deadline is broken. */
 function costOf(request: OptimizeToursRequest, candidate: Candidate): number {
-  let occupancy = 0;
+  // Delivery-only shipments are already aboard: Google treats them as
+  // pre-loaded, so occupancy starts at those seats rather than zero.
+  let occupancy = request.shipments
+    .filter((shipment) => !shipment.pickup)
+    .reduce((sum, shipment) => sum + shipment.seats, 0);
   let cumulativeKm = 0;
   let arrivalMin = 0;
   let previous = request.vehicleStart;
 
   for (const visit of candidate.visits) {
     const shipment = request.shipments[visit.shipmentIndex]!;
-    const location = visit.type === "PICKUP" ? shipment.pickup : shipment.drop;
+    const location = visitLocation(shipment, visit.type);
 
     const leg = mockLeg(previous, location);
     cumulativeKm += leg.distanceKm;
@@ -187,7 +212,7 @@ function materialise(request: OptimizeToursRequest, candidate: Candidate): Optim
 
   for (const visit of candidate.visits) {
     const shipment = request.shipments[visit.shipmentIndex]!;
-    const location = visit.type === "PICKUP" ? shipment.pickup : shipment.drop;
+    const location = visitLocation(shipment, visit.type);
     const leg = mockLeg(previous, location);
 
     previous = location;

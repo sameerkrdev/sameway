@@ -12,8 +12,8 @@ import { StubOptimizerEngine } from "./fixtures/stubOptimizer";
 
 async function run(input: MakeContextInput) {
   const context = makeContext({ optimizer: new StubOptimizerEngine(), ...input });
-  await operationalStateStage.execute(context);
   await h3RouteCorridorStage.execute(context);
+  await operationalStateStage.execute(context);
   await stopSequenceGenerationStage.execute(context);
   await detourLowerBoundStage.execute(context);
   await roadRoutingStage.execute(context);

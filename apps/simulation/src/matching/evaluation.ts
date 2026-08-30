@@ -21,6 +21,8 @@ interface MutableEvaluation {
   finalScore?: number;
   failedAtStageId?: StageId;
   alive: boolean;
+  /** False when Layer 1 skips a driver outside the corridor search. */
+  inMatchingScope: boolean;
 }
 
 /**
@@ -41,6 +43,7 @@ export class EvaluationLedger {
         metrics: {},
         reasons: [],
         alive: true,
+        inMatchingScope: true,
       });
     }
   }
@@ -102,6 +105,16 @@ export class EvaluationLedger {
   }
 
   /**
+   * Layer 1: a ride whose corridor never intersected the pickup search was never
+   * search was never a candidate — stop the pipeline without counting a failure.
+   */
+  markUnsearched(driverId: string): void {
+    const record = this.require(driverId);
+    record.inMatchingScope = false;
+    record.alive = false;
+  }
+
+  /**
    * @param forceFailed Set when the request itself was rejected. No driver was
    * ever evaluated, so none of them may be reported as a match.
    */
@@ -109,6 +122,17 @@ export class EvaluationLedger {
     const evaluations: DriverEvaluation[] = [];
 
     for (const record of this.records.values()) {
+      let finalStatus: DriverEvaluation["finalStatus"];
+      if (forceFailed) {
+        finalStatus = "FAILED";
+      } else if (!record.inMatchingScope) {
+        finalStatus = "NOT_EVALUATED";
+      } else if (record.alive) {
+        finalStatus = "PASSED";
+      } else {
+        finalStatus = "FAILED";
+      }
+
       evaluations.push({
         driverId: record.driverId,
         stageResults: record.stageResults,
@@ -118,7 +142,7 @@ export class EvaluationLedger {
         ...(record.scoreBreakdown ? { scoreBreakdown: record.scoreBreakdown } : {}),
         ...(record.commitPlan ? { commitPlan: record.commitPlan } : {}),
         ...(record.finalScore !== undefined ? { finalScore: record.finalScore } : {}),
-        finalStatus: record.alive && !forceFailed ? "PASSED" : "FAILED",
+        finalStatus,
         ...(record.failedAtStageId ? { failedAtStageId: record.failedAtStageId } : {}),
       });
     }

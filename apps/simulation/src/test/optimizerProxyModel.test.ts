@@ -204,6 +204,52 @@ describe("OptimizeTours wire format", () => {
       ),
     ).toThrow(/ship_ghost/);
   });
+
+  it("omits pickups[] for a delivery-only (already onboard) shipment", () => {
+    const payload = toShipmentModel(
+      {
+        ...request,
+        shipments: [
+          {
+            id: "ship_pA",
+            drop: { lat: 28.6, lng: 77.34 },
+            seats: 1,
+            dropDeadlineMin: 31.883,
+            penaltyCost: null,
+          },
+          request.shipments[1]!,
+        ],
+        committedPrecedence: [{ shipmentId: "ship_pA", type: "DROP" }],
+        firstSolutionVisits: [
+          { shipmentId: "ship_pNew", type: "PICKUP", startMin: 4 },
+          { shipmentId: "ship_pA", type: "DROP", startMin: 20 },
+          { shipmentId: "ship_pNew", type: "DROP", startMin: 25 },
+        ],
+      },
+      NOW_MS,
+    );
+
+    const shipments = (payload.model as Record<string, unknown>).shipments as Record<
+      string,
+      unknown
+    >[];
+    expect(shipments[0]!.pickups).toBeUndefined();
+    expect(shipments[0]!.deliveries).toHaveLength(1);
+    expect("pickups" in shipments[1]!).toBe(true);
+
+    const visits = (
+      (payload.injectedFirstSolutionRoutes as Record<string, unknown>[])[0]!
+        .visits as Record<string, unknown>[]
+    );
+    // Delivery of shipment 0 without a matching pickup is valid because that
+    // shipment is delivery-only. Google rejects the same visits when pickups[]
+    // is present ("shipment #0 has its delivery performed, but not its pickup").
+    expect(visits).toEqual([
+      { shipmentIndex: 1, isPickup: true, startTime: "2026-08-23T14:27:45Z" },
+      { shipmentIndex: 0, isPickup: false, startTime: "2026-08-23T14:43:45Z" },
+      { shipmentIndex: 1, isPickup: false, startTime: "2026-08-23T14:48:45Z" },
+    ]);
+  });
 });
 
 describe("legacy append-only locked spine", () => {

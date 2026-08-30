@@ -57,14 +57,15 @@ export async function runMatching(options: RunMatchingOptions): Promise<Matching
   const allDriverIds = scenario.drivers.map((driver) => driver.id);
   const ledger = new EvaluationLedger(allDriverIds);
   const lookups = buildLookups(scenario);
-  // Stage 2 builds these once; every later stage reads the remaining route
+  // h3RouteCorridor builds these once; every later stage reads the remaining route
   // from here rather than rebuilding it per stage.
   const corridors = new Map<string, RideCorridor>();
-  // Stage 5 publishes candidate orderings here; stages 6, 7 and 8 narrow them.
+  // stopSequenceGeneration publishes candidate orderings here; later stages narrow them.
   const sequences = new Map<string, RouteInsertionCandidate[]>();
-  // Stage 1 prices the ride's existing promises here; stages 6 and 10 enforce them.
+  // operationalState prices the ride's existing promises here; pickupTimeWindow
+  // and hardConstraints enforce them.
   const delayBudgets = new Map<string, StopDelayBudget[]>();
-  // Stage 8 publishes the solved route here; stages 9 through 12 read it.
+  // roadRouting publishes the solved route here; stages through commit read it.
   const solutions = new Map<string, SolvedRoute>();
 
   let liveDriverIds: string[] = [...allDriverIds];
@@ -106,11 +107,13 @@ export async function runMatching(options: RunMatchingOptions): Promise<Matching
     );
 
     // A stage may discover a candidate set rather than filter one, in which
-    // case drivers it did not surface are failed here rather than passing by
-    // default. Stage 2 is the one such stage today.
+    // case drivers it did not surface are failed or skipped here. The corridor
+    // stage is the Layer 1 discovery stage.
     const candidateSet = outcome.candidateDriverIds
       ? new Set(outcome.candidateDriverIds)
       : undefined;
+
+    const isCorridorDiscovery = stage.id === "h3RouteCorridor";
 
     const driverResults: DriverStageResult[] = [];
     const survivors: string[] = [];
@@ -138,21 +141,21 @@ export async function runMatching(options: RunMatchingOptions): Promise<Matching
           ...(verdict.metrics ? { metrics: verdict.metrics } : {}),
         };
       } else if (candidateSet && !candidateSet.has(driverId)) {
-        // Task 11 settled the open question here: stage 2 rejects
-        // out-of-corridor drivers itself, with `CORRIDOR_NO_MATCH` and the hop
-        // count that earned it. This branch survives as the generic safety net
-        // for any discovery stage that returns a candidate set without also
-        // accounting for the live drivers it left out — it can only speak
-        // about the search, not about a particular ride.
-        result = {
-          driverId,
-          status: "FAILED",
-          reasons: [
-            reason("H3_OUTSIDE_SEARCH", "Driver outside the maximum H3 search area", {
-              threshold: settings.maxH3Ring,
-            }),
-          ],
-        };
+        if (isCorridorDiscovery) {
+          // Layer 1: never in the corridor lookup → not part of this run.
+          result = notEvaluated(driverId);
+          ledger.markUnsearched(driverId);
+        } else {
+          result = {
+            driverId,
+            status: "FAILED",
+            reasons: [
+              reason("H3_OUTSIDE_SEARCH", "Driver outside the maximum H3 search area", {
+                threshold: settings.maxH3Ring,
+              }),
+            ],
+          };
+        }
       } else {
         result = { driverId, status: "PASSED", reasons: [] };
       }
@@ -308,13 +311,8 @@ function skippedStage(
 }
 
 /**
- * The candidate count is the output of the corridor stage.
- *
- * Note this is no longer "everyone in the search area": stage 2 runs after
- * stage 0, so drivers that failed basic eligibility were never offered to it.
- * `candidates` therefore means "eligible drivers whose corridor matched", and
- * `totalDrivers - candidates` mixes ineligible supply with out-of-corridor
- * supply. The per-stage funnel is the place to tell those apart.
+ * The candidate count is the output of the corridor (Layer 1) stage — rides
+ * discovered via H3 corridor lookup. Drivers outside that search are not evaluated.
  */
 function countCandidates(stageResults: readonly StageResult[]): number {
   const generation = stageResults.find((stage) => stage.stageId === "h3RouteCorridor");
@@ -384,6 +382,8 @@ function buildSummary(
     candidates,
     passed: ranked.length,
     rejected: evaluations.filter((evaluation) => evaluation.finalStatus === "FAILED").length,
+    notEvaluated: evaluations.filter((evaluation) => evaluation.finalStatus === "NOT_EVALUATED")
+      .length,
     ...(best ? { bestDriverId: best.driverId } : {}),
     ...(best?.finalScore !== undefined ? { bestScore: best.finalScore } : {}),
     rejectionsByCode: [...groups.values()].sort((a, b) => b.count - a.count),

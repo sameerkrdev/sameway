@@ -11,15 +11,21 @@ describe("pipeline runner", () => {
     const scenario = buildDelhiScenario();
     const result = await runFixture(scenario, delhiRequest(scenario));
 
-    // D004's vehicle is full, so it dies at the merged eligibility stage.
+    // D004's vehicle is full — corridor discovers it first, then eligibility rejects.
     const evaluation = evaluationFor(result, "D004");
     expect(evaluation.failedAtStageId).toBe("basicEligibility");
+    expect(stageStatus(result, "D004", "h3RouteCorridor")).toBe("PASSED");
     expect(stageStatus(result, "D004", "basicEligibility")).toBe("FAILED");
 
     for (const stageId of [
       "operationalState",
-      "h3RouteCorridor",
+      "pickupRouteDistance",
+      "directionCompatibility",
+      "stopSequenceGeneration",
+      "pickupTimeWindow",
+      "detourLowerBound",
       "roadRouting",
+      "incrementalCost",
       "hardConstraints",
       "scoring",
       "commit",
@@ -81,15 +87,15 @@ describe("pipeline runner", () => {
     );
   });
 
-  it("runs all fourteen stages in the Overview's order", async () => {
+  it("runs all fourteen stages in the default order", async () => {
     const scenario = buildDelhiScenario();
     const result = await runFixture(scenario, delhiRequest(scenario));
 
     expect(result.stageResults.map((stage) => stage.stageId)).toEqual([
       "requestValidation",
+      "h3RouteCorridor",
       "basicEligibility",
       "operationalState",
-      "h3RouteCorridor",
       "pickupRouteDistance",
       "directionCompatibility",
       "stopSequenceGeneration",

@@ -7,6 +7,11 @@ over them, and see exactly why every driver passed or failed.
 The matching engine is pure TypeScript with no React and no Google Maps imports,
 so it can be lifted into a backend service unchanged.
 
+**Stage-by-stage filters (deep dive):** see
+[`docs/MATCHING-STAGES-GUIDE.md`](../../docs/MATCHING-STAGES-GUIDE.md) for every
+check, condition, default limit, and plain-language examples across all 14
+pipeline stages.
+
 ## Installation
 
 From the repository root:
@@ -149,9 +154,9 @@ request alone, before any driver is considered, so it has none.
 
 ```
 requestValidation        (—)  the request itself: coordinates, seats, sanity
+  → h3RouteCorridor       (2)  Layer 1: H3 corridor discovery (Redis-shaped)
   → basicEligibility      (0)  status, vehicle capability, conservative seats
   → operationalState      (1)  price each committed promise as a delay budget
-  → h3RouteCorridor       (2)  does the pickup fall on the remaining route?
   → pickupRouteDistance   (3)  exact point-to-polyline distance to that route
   → directionCompatibility(4)  bearing, destination proximity, destination ahead
   → stopSequenceGeneration(5)  legal insertion positions under precedence+capacity
@@ -163,6 +168,10 @@ requestValidation        (—)  the request itself: coordinates, seats, sanity
   → scoring              (11)  fairness-weighted ranking. Lower is better
   → commit               (12)  build the plan that becomes the new baseline
 ```
+
+Corridor discovery runs first — only rides whose remaining route intersects the
+pickup H3 search enter the funnel. Drivers outside that search are **not evaluated**
+(like a Redis `h3_cell → ride_ids` lookup that never returned them).
 
 Stage order is still data, but it is no longer freely reorderable: these
 fourteen have strict data dependencies — stage 9 cannot measure what stage 8 has
@@ -179,10 +188,10 @@ A few decisions worth knowing:
   slots for the new rider and never reorders committed stops, so the candidate
   count is exactly `(n+1)(n+2)/2`. The solver is sent the same constraint. See
   *Known limits* — the current form of that lock is stronger than intended.
-- **Commitments are priced, not frozen.** Stage 1 gives every committed stop a
-  delay budget from its own passenger's tolerance. Stage 6 rejects *orderings*
-  that break one, never the driver: a driver survives as long as any ordering
-  does.
+- **Commitments are priced, not frozen.** Stage 2 (`operationalState`) gives every
+  committed stop a delay budget from its own passenger's tolerance. Stage 7
+  rejects *orderings* that break one, never the driver: a driver survives as long
+  as any ordering does.
 - **Capacity is per segment.** Occupancy rises and falls along the route and the
   walk is seeded with passengers already aboard, whose pickups are no longer in
   the route. `totalSeats − passengerCount` is only a cheap pre-filter, which is
@@ -197,6 +206,14 @@ A few decisions worth knowing:
   plausible.
 - **Failure stops the pipeline.** Later stages report `NOT_EVALUATED`, never a
   second rejection, so each driver has exactly one attributable failure point.
+
+## Constants and hard filters
+
+Tunable limits, hard-filter stages, prepare stages, and reason-code conventions
+are documented in
+[`docs/MATCHING-STAGES-GUIDE.md` § Constants and hard filters](../../docs/MATCHING-STAGES-GUIDE.md#3-constants-and-hard-filters).
+The stage-by-stage checks and fail codes are in the sections that follow there.
+
 ## Algorithm architecture
 
 ```

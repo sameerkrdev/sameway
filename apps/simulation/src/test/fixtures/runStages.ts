@@ -26,8 +26,8 @@ export async function runToIncrementalCost(input: MakeContextInput) {
   const context = makeContext({ optimizer: new StubOptimizerEngine(), ...input });
 
   for (const stage of [
-    operationalStateStage,
     h3RouteCorridorStage,
+    operationalStateStage,
     pickupRouteDistanceStage,
     directionCompatibilityStage,
     stopSequenceGenerationStage,

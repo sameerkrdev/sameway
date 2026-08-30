@@ -127,11 +127,14 @@ export function readOptimizeToursResponse(
     }
 
     const type = rawVisit.isPickup === true ? "PICKUP" : "DROP";
+    if (type === "PICKUP" && !shipment.pickup) {
+      throw new Error(`Solver returned a pickup for delivery-only shipment ${shipment.id}`);
+    }
     visits.push({
       shipmentId: shipment.id,
       passengerId: shipment.passengerId,
       type,
-      location: type === "PICKUP" ? shipment.pickup : shipment.drop,
+      location: type === "PICKUP" ? shipment.pickup! : shipment.drop,
       arrivalMin: minutesBetween(route.vehicleStartTime, rawVisit.startTime),
     });
 

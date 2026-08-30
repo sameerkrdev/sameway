@@ -6,14 +6,20 @@ export type OptimizerEngineKind = "GOOGLE_OPTIMIZE_TOURS";
 /**
  * One passenger, as the solver sees them.
  *
- * Pickup-before-drop precedence is implicit in this shape — a shipment is
- * collected then delivered — so no separate ordering constraint is ever sent.
+ * Pickup-before-drop precedence is implicit when both ends exist. An absent
+ * pickup means the passenger is already aboard (delivery-only / pre-loaded).
  */
 export interface OptimizerShipment {
   /** Stable id we can map back to a passenger. */
   id: string;
   passengerId: string;
-  pickup: LatLng;
+  /**
+   * Absent for a passenger already aboard: the shipment is delivery-only
+   * (pre-loaded). Inventing a pickup at the vehicle start makes OptimizeTours
+   * treat it as pickup-delivery, then reject an injected route that only has
+   * the remaining drop.
+   */
+  pickup?: LatLng;
   drop: LatLng;
   seats: number;
   /**

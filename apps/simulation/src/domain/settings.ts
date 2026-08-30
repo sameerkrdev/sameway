@@ -1,18 +1,17 @@
 import type { MatchingSettings, StageId } from "./entities";
 
 /**
- * The Overview's stage order, and the only order the engine supports.
+ * Stage order: Layer 1 corridor discovery first, then cheap eligibility filters,
+ * then insertion/routing/decision stages.
  *
- * The previous `BRIEF_STAGE_ORDER` A/B existed because two stages were merely
- * a cost trade-off against each other. These thirteen have strict data
- * dependencies — stage 9 cannot measure what stage 8 has not yet routed — so a
- * reorderable list would mostly express configurations that cannot run.
+ * Stages after corridor still have strict data dependencies — road routing must
+ * run before incremental cost — so only diagnostic sub-pipelines may reorder.
  */
 export const DEFAULT_STAGE_ORDER: StageId[] = [
   "requestValidation",
+  "h3RouteCorridor",
   "basicEligibility",
   "operationalState",
-  "h3RouteCorridor",
   "pickupRouteDistance",
   "directionCompatibility",
   "stopSequenceGeneration",
@@ -30,7 +29,7 @@ export const DEFAULT_SETTINGS: MatchingSettings = {
   minimumUsableCandidates: 10,
   maxH3Ring: 3,
 
-  // Corridor proximity (stages 3 and 4).
+  // Corridor proximity (stages 4 and 5 after Layer 1 discovery).
   maxPickupToRouteDistanceKm: 1.5,
   maxDropToRouteDistanceKm: 3,
   maxBearingDifferenceDeg: 75,

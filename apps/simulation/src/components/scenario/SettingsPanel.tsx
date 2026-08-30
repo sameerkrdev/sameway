@@ -63,8 +63,8 @@ export function SettingsPanel() {
           />
         </div>
         <p className="text-[11px] text-[var(--muted-foreground)]">
-          Expansion counts only drivers that survive the cheap filters, so a cluster of offline
-          drivers cannot end the search early.
+          Ring expansion counts online drivers with matching vehicle and seats when deciding
+          whether to stop early — the same predicates eligibility applies later.
         </p>
       </Section>
 

@@ -108,7 +108,7 @@ describe("buildOptimizeToursRequest", () => {
     ).toThrow(/already on this ride|already committed/i);
   });
 
-  it("omits a pickup deadline for a passenger already aboard", () => {
+  it("models an onboard passenger as delivery-only (pre-loaded, no pickup)", () => {
     const built = buildOptimizeToursRequest({
       ...baseInput,
       committedStops: [stop("s2", "pA", "DROP", 15)],
@@ -116,12 +116,16 @@ describe("buildOptimizeToursRequest", () => {
     });
 
     const committed = built.shipments.find((shipment) => shipment.passengerId === "pA")!;
+    // A fake pickup at vehicle start makes this a pickup-delivery shipment.
+    // OptimizeTours then rejects injected_first_solution_routes that only
+    // contain the remaining drop: "shipment #N has its delivery performed,
+    // but not its pickup". Delivery-only means pre-loaded.
+    expect(committed.pickup).toBeUndefined();
     expect(committed.pickupDeadlineMin).toBeUndefined();
     expect(built.lockedVisits).toEqual([]);
-    expect(committed.pickup).toEqual(baseInput.vehicleStart);
   });
 
-  it("models onboard pickup at vehicle start without locking visit order", () => {
+  it("keeps a waiting passenger as pickup-delivery beside an onboard drop", () => {
     const built = buildOptimizeToursRequest({
       ...baseInput,
       committedStops: [
@@ -137,7 +141,9 @@ describe("buildOptimizeToursRequest", () => {
 
     expect(built.lockedVisits).toEqual([]);
     const onboard = built.shipments.find((shipment) => shipment.passengerId === "pA")!;
-    expect(onboard.pickup).toEqual(baseInput.vehicleStart);
+    const waiting = built.shipments.find((shipment) => shipment.passengerId === "pB")!;
+    expect(onboard.pickup).toBeUndefined();
+    expect(waiting.pickup).toEqual({ lat: 28.6, lng: 77.2 });
   });
 
   it("models multiple onboard passengers without locking visit order", () => {
