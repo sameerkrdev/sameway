@@ -49,6 +49,10 @@ export const directionCompatibilityStage: MatchingStage = {
         continue;
       }
 
+      // Check 5.1 — bearing difference. The corridor polyline is [driver.location,
+      // …remainingStops]; polylineBearingDeg uses only the first and last point
+      // (V → final remaining stop), not V → next stop and not segment-by-segment
+      // turns. Compared against the new request's pickup → drop bearing.
       const routeBearing = polylineBearingDeg(corridor.polyline);
       const requestBearing = bearingDeg(request.pickup, request.drop);
       const difference =

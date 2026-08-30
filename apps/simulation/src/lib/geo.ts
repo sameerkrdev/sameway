@@ -321,7 +321,13 @@ export function projectOnPolylineKm(point: LatLng, polyline: readonly LatLng[]):
   return bestAlong;
 }
 
-/** Start-to-end bearing of a polyline, or null if it has fewer than two points. */
+/**
+ * Start-to-end bearing of a polyline, or null if it has fewer than two points.
+ *
+ * Stage 5.1 uses this on the corridor line [driver.location, …remainingStops]:
+ * only the chord from V to the last remaining stop. Intermediate pickups and
+ * drops on the polyline do not affect the result.
+ */
 export function polylineBearingDeg(polyline: readonly LatLng[]): number | null {
   if (polyline.length < 2) {
     return null;

@@ -629,12 +629,51 @@ Route bearing = bearing(V → Drop B)   ← overall remaining trip, not each pas
 ## Check 5.1 — Bearing difference (same general heading?)
 
 ```
-difference = smallest angle between routeBearing and requestBearing   (0–180°)
+polyline       = [V] + remaining stops in sequence     (V = driver current location)
+routeBearing   = bearing(V → last remaining stop)      (start-to-end chord only)
+requestBearing = bearing(new pickup → new drop)
+difference     = smallest angle between routeBearing and requestBearing   (0–180°)
 ```
 
 | Condition | Default | Fail code |
 |-----------|---------|-----------|
 | `difference ≤ maxBearingDifferenceDeg` | **75°** | `BEARING_INCOMPATIBLE` |
+
+### Where the angle starts and ends
+
+| Uses | Does **not** use |
+|------|------------------|
+| Driver **current location** (`V`) as the start of the route line | GPS heading / which way the car is physically pointing |
+| **Last remaining stop** as the end of the route line | Bearing from next stop → drop |
+| One straight **chord** V → last stop (`polylineBearingDeg`) | Sum of segment-by-segment turn angles |
+| New request pickup → drop for `requestBearing` | Per-passenger headings when multiple people are onboard |
+
+The corridor polyline is built in `corridor.ts` as `[driver.location, …remainingStops]`.  
+Check 5.1 reads only the **first and last** point of that list — every intermediate stop (pickups and drops in between) is ignored for bearing. Middle stops still matter for checks 5.2 and 5.3 (corridor distance and progress along the line).
+
+### Multi-stop route examples
+
+**Case A — remaining route `V → P2 → D2 → D1`** (e.g. passenger 1 already onboard):
+
+```
+Polyline:  V —— P2 —— D2 —— D1
+                 ↑    ↑    ↑
+            (ignored for bearing)
+
+routeBearing = bearing(V → D1)     ← only V and D1
+```
+
+**Case B — remaining route `V → P1 → P2 → D1 → D2`** (all stops still ahead):
+
+```
+Polyline:  V —— P1 —— P2 —— D1 —— D2
+                 ↑    ↑    ↑    ↑
+            (ignored for bearing)
+
+routeBearing = bearing(V → D2)     ← only V and D2
+```
+
+The two cases can yield **different** route bearings because the **last stop** differs (D1 vs D2), even when the paths look similar on a map. A route that curves (e.g. east to P2, then north to D1) is still collapsed to one straight V → last-stop line — deliberately loose, because roads are not straight lines.
 
 ### Examples
 
@@ -657,7 +696,7 @@ Difference ≈ 165°  → FAIL (BEARING_INCOMPATIBLE)
 **With 2 onboard**
 
 The app does **not** compare against passenger A’s heading and passenger B’s heading separately.  
-It only uses **one** remaining-route compass: start of line → end of line.
+It only uses **one** remaining-route compass: **V → last remaining stop**, not V → next stop.
 
 ---
 
