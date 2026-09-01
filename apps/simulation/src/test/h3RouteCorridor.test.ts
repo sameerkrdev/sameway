@@ -26,7 +26,7 @@ const eastboundRide = {
       lng: 77.3,
     },
   ],
-  passengers: [{ id: "pA", state: "IN_RIDE" as const, maxPickupDelayMin: 5, maxDropDelayMin: 8 }],
+  passengers: [{ id: "pA", state: "IN_RIDE" as const, maxPickupDelayMin: 5, maxDropDelayPercent: 8 }],
 };
 
 describe("h3RouteCorridor", () => {

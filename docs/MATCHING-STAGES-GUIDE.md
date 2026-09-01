@@ -13,23 +13,24 @@ This guide matches the code in `apps/simulation/src/matching/stages/` and the de
 3. [Constants and hard filters](#3-constants-and-hard-filters)
 4. [Default limits cheat sheet](#4-default-limits-cheat-sheet)
 5. [How a run works](#5-how-a-run-works)
-5. [Stage 0 — Request validation](#stage-0--request-validation)
-6. [Stage 1 — H3 route corridor (Layer 1)](#stage-1--h3-route-corridor-layer-1)
-7. [Stage 2 — Basic eligibility](#stage-2--basic-eligibility)
-8. [Stage 3 — Operational state](#stage-3--operational-state)
-9. [Stage 4 — Pickup → route distance](#stage-4--pickup--route-distance)
-10. [Stage 5 — Direction compatibility](#stage-5--direction-compatibility)
-11. [Stage 6 — Stop sequence generation](#stage-6--stop-sequence-generation)
-12. [Stage 7 — Pickup time window](#stage-7--pickup-time-window)
-13. [Stage 8 — Detour lower bound](#stage-8--detour-lower-bound)
-14. [Stage 9 — Road routing (optimizer)](#stage-9--road-routing-optimizer)
-15. [Stage 10 — Incremental cost](#stage-10--incremental-cost)
-16. [Stage 11 — Hard constraints](#stage-11--hard-constraints)
-17. [Stage 12 — Scoring](#stage-12--scoring)
-18. [Stage 13 — Commit](#stage-13--commit)
-19. [Full story examples](#20-full-story-examples)
-20. [“Why did I fail?” cheat sheet](#21-why-did-i-fail-cheat-sheet)
-21. [Known lab limits](#22-known-lab-limits)
+6. [Stage 0 — Request validation](#stage-0--request-validation)
+7. [Stage 1 — H3 route corridor (Layer 1)](#stage-1--h3-route-corridor-layer-1)
+8. [Stage 2 — Basic eligibility](#stage-2--basic-eligibility)
+9. [Stage 3 — Operational state](#stage-3--operational-state)
+10. [Stage 4 — Pickup → route distance](#stage-4--pickup--route-distance)
+11. [Stage 5 — Direction compatibility](#stage-5--direction-compatibility)
+12. [Stages 6–9 — Enumeration vs Google](#stages-69--enumeration-vs-google)
+13. [Stage 6 — Stop sequence generation](#stage-6--stop-sequence-generation)
+14. [Stage 7 — Pickup time window](#stage-7--pickup-time-window)
+15. [Stage 8 — Detour lower bound](#stage-8--detour-lower-bound)
+16. [Stage 9 — Road routing (optimizer)](#stage-9--road-routing-optimizer)
+17. [Stage 10 — Incremental cost](#stage-10--incremental-cost)
+18. [Stage 11 — Hard constraints](#stage-11--hard-constraints)
+19. [Stage 12 — Scoring](#stage-12--scoring)
+20. [Stage 13 — Commit](#stage-13--commit)
+21. [Full story examples](#21-full-story-examples)
+22. [“Why did I fail?” cheat sheet](#22-why-did-i-fail-cheat-sheet)
+23. [Known lab limits](#23-known-lab-limits)
 
 ---
 
@@ -81,6 +82,8 @@ returning their ride id.
 | **Pooling** | Sharing a vehicle with other passengers |
 | **Spine** | Existing stops kept in their relative order |
 | **Insertion** | Slotting new pickup/drop into gaps in that spine |
+| **Shortlist** | Top-N cheapest enumerated orderings kept after Stage 8 (default N = 6) |
+| **firstSolution hint** | Cheapest shortlisted ordering passed to Google as a starting suggestion — not a hard lock |
 
 ### How the route line is built
 
@@ -123,17 +126,18 @@ They fall into a few groups:
 | Group | Settings | Used for |
 |-------|----------|----------|
 | **Spatial search** | `h3Resolution`, `maxH3Ring`, `minimumUsableCandidates` | How wide Layer 1 corridor discovery casts its net (stage 1) |
-| **Geometry pruning** | `maxPickupToRouteDistanceKm`, `maxDropToRouteDistanceKm`, `maxBearingDifferenceDeg`, `estimatedSpeedKmh` | Cheap straight-line gates before any solver call (stages 4–5, 7) |
-| **Delay and detour budgets** | `maxNewPassengerPickupDelayMin`, `maxNewPassengerRideDetourMin`, `maxExistingPassengerDelayMin`, `maxAdditionalDurationMin`, `maxCorridorExtensionKm` | How much harm each party may absorb (stages 8, 11) |
+| **Geometry pruning** | `maxPickupToRouteDistanceKm`, `maxBearingDifferenceDeg`, `estimatedSpeedKmh` | Cheap straight-line gates before any solver call (stages 4–5, 7) |
+| **Delay and detour budgets** | `maxNewPassengerPickupDelayMin`, `maxNewPassengerRideDetourMin`, `maxExistingPassengerDelayPercent`, `shortTripDelayPercent` | How much harm each party may absorb (stages 3, 7, 11) |
 | **Pooling policy** | `maxPooledPassengers` | Maximum shared passengers (stage 11) |
-| **Cost control** | `maxOptimizerCallsPerRun`, `maxRoutingCallsPerRun`, `maxRoutedInsertionsPerDriver`, `optimizerTimeoutMs` | Stops a run from spending unbounded API quota (stages 8–9) |
+| **Cost control** | `maxOptimizerCallsPerRun`, `maxRoutingCallsPerRun`, `maxRoutedInsertionsPerDriver`, `optimizerTimeoutMs` | Shortlist size in stage 8; one OptimizeTours call per driver in stage 9 (`maxOptimizerCallsPerRun`); Routes API calls for solo/baseline/map polylines (`maxRoutingCallsPerRun`) |
 | **Scoring weights** | `weights.*` | Biases the final ranking without rejecting anyone (stage 12) |
 
-Passengers can carry their own pickup/drop delay tolerances (`maxPickupDelayMin`,
-`maxDropDelayMin`); when unset, they inherit `DEFAULT_PASSENGER_DELAY_BUDGETS`,
-which mirrors the scenario defaults. A handful of values are fixed code constants
+Passengers can carry their own pickup/drop delay tolerances (`maxPickupDelayMin` in
+minutes, `maxDropDelayPercent` as a percent of solo trip ETA); when unset, they
+inherit `DEFAULT_PASSENGER_DELAY_BUDGETS`, which mirrors the scenario defaults. A handful of values are fixed code constants
 rather than settings — notably `MAX_INTERMEDIATE_WAYPOINTS` (25, Google's Routes
-API limit) and `MAX_MATRIX_ELEMENTS` (625, RouteMatrix limit).
+API limit, enforced in Stage 6) and `MAX_MATRIX_ELEMENTS` (625, RouteMatrix limit
+in the routing adapter). The matching pipeline itself uses `getRoute`, not RouteMatrix.
 
 ### Hard filters
 
@@ -142,9 +146,10 @@ driver that fails one never reaches scoring and never gets a second rejection
 reason. Early filters shrink the candidate set cheaply: request validation, H3
 corridor discovery, basic eligibility (status, vehicle, conservative seats),
 pickup-to-route distance, direction compatibility, stop-sequence generation
-(capacity and precedence), pickup time windows, and the detour lower bound all
-reject drivers or orderings that are obviously incompatible before OptimizeTours
-runs (stage 9). After routing, **incremental cost** (stage 10) deliberately does
+(capacity and precedence), and pickup time windows all reject drivers or
+orderings that are obviously incompatible before OptimizeTours runs (stage 9).
+**Detour lower bound** (stage 8) only ranks and shortlists — it never fails a
+driver. After routing, **incremental cost** (stage 10) deliberately does
 *not* filter — it only records what everyone gains or loses so the UI can show a
 full impact profile even for rejected drivers. **Hard constraints** (stage 11) is
 the authoritative accept/reject gate: it re-checks every configured maximum and
@@ -189,27 +194,55 @@ From `DEFAULT_SETTINGS` (you can change these in scenario settings):
 | `maxH3Ring` | 3 | 1 (corridor) | How many H3 rings outward from the pickup cell to search when corridor discovery has not yet found enough rides. Each ring is one hop to a neighbouring cell. |
 | `minimumUsableCandidates` | 10 | 1 (corridor) | Stop expanding the H3 search once at least this many **online, eligible** rides have been discovered. Prevents over-fetching in dense areas while ensuring sparse areas widen the net. |
 | `maxPickupToRouteDistanceKm` | **1.5 km** | 4 | Maximum perpendicular distance from the new pickup to a ride's remaining-route polyline. Catches pickups that H3 flagged as "nearby" but are actually too far off the road the vehicle will follow. |
-| `maxDropToRouteDistanceKm` | **3 km** | 5 | Maximum distance from the new passenger's **drop** to the ride's route line. Rejects requests whose destination would drag the vehicle far off the existing corridor. |
 | `maxBearingDifferenceDeg` | **75°** | 5 | Maximum angle between the ride's heading and the new request's pickup→drop direction. Filters obviously wrong-way or perpendicular trips before routing. Deliberately loose — roads are not straight lines. |
 | `estimatedSpeedKmh` | **24 km/h** | 7 | Assumed average speed for **straight-line ETA estimates only** in the pickup time-window pre-filter. Real road times come from the solver in stage 9; this just prunes hopeless orderings cheaply. |
-| `maxCorridorExtensionKm` | **15 km** | 8, 11 | For same-direction pooling: maximum extra road distance the route may extend **past the last committed stop** to reach the new drop. Checked as a straight-line lower bound in stage 8 and again on real road distance in stage 11. |
-| `maxRoutedInsertionsPerDriver` | **6** | 8 | Maximum stop-sequence orderings sent to OptimizeTours per driver. Stage 8 keeps the cheapest candidates by straight-line added length and discards the rest to control solver cost. |
-| `maxAdditionalDurationMin` | **12 min** | 11, 12 | For mid-trip matches: maximum extra **total travel time** the insertion adds to the driver's route compared to the baseline. Hard reject in stage 11; also used to normalise the driver-impact term in stage 12 scoring. |
-| `maxExistingPassengerDelayMin` | **12 min** | 11, 12 | Global backstop for how late any **existing** passenger may arrive compared to their promised ETA. Per-passenger budgets on the passenger record are checked first; this ceiling catches scenarios where none were set explicitly. |
-| `maxNewPassengerPickupDelayMin` | **10 min** | 11, 12 | Maximum time the **new** passenger waits at pickup compared to arriving immediately (solo trip ETA to pickup). Measures wait cost of sharing, not total trip length. |
+| `maxRoutedInsertionsPerDriver` | **6** | 8 | Maximum enumerated orderings **kept on the context** after Stage 8 (sorted by straight-line added km). Only **#1** is used in Stage 9 as a `firstSolution` **warm-start hint** for OptimizeTours (one call per driver). #2–#6 are not separate API calls and are not retried on failure today. See [Why the firstSolution hint?](#why-the-firstsolution-hint). |
+| `maxExistingPassengerDelayPercent` | **50%** | 3, 11 | Global backstop for how late an **existing** passenger's drop may arrive, expressed as a percent of their **solo trip ETA**. Combined with each passenger's own `maxDropDelayPercent` using the **stricter** (smaller) allowance. |
+| `shortTripSoloEtaMaxMin` | **5 min** | 3, 11 | Solo trips at or below this ETA use `shortTripDelayPercent` instead of the configured percent. |
+| `shortTripDelayPercent` | **250%** | 3, 11 | Drop-delay tolerance for short solo trips (default **250%** of solo ETA). |
+| `maxNewPassengerPickupDelayMin` | **8 min** | 11, 12 | Maximum time the **new** passenger waits at pickup compared to arriving immediately (solo trip ETA to pickup). Measures wait cost of sharing, not total trip length. |
 | `maxNewPassengerRideDetourMin` | **12 min** | 11, 12 | Maximum extra time the **new** passenger's own journey takes when pooled versus riding solo (pooled ride duration minus solo ride duration). Protects the new rider from an unacceptably stretched trip. |
 | `maxPooledPassengers` | **4** | 11 | Maximum number of passengers allowed in one shared vehicle at once, counting the new request. Solo rides (no existing passengers) are not subject to this cap. |
 | `maxOptimizerCallsPerRun` | 40 | 9 | Hard cap on `OptimizeTours` API calls per matching run. Drivers beyond the budget are marked **not evaluated**, not rejected — budget exhaustion is not an opinion about a driver. |
+| `maxRoutingCallsPerRun` | 150 | 9, 10 | Cap on **Routes API** calls (`getRoute` / matrix) via `InstrumentedRoutingEngine`: the new rider's solo trip, each driver's baseline remaining route, and Stage 10 map polylines. Separate from the optimizer cap. Cache hits do not consume it. |
 | `optimizerTimeoutMs` | 10_000 | 9 | Per-call timeout passed to the Route Optimization API. A timed-out solve fails that driver's routing attempt for this run. |
+| `weights.driverImpact` | 30 | 12 | Share of the fairness score from extra driver duration (0 for idle). Weights are rescaled to sum to 1. |
+| `weights.existingPassengerImpact` | 30 | 12 | Share from the worst **drop** delay vs the baseline route. |
+| `weights.newPassengerImpact` | 25 | 12 | Share from the new rider's ride-detour minutes. |
+| `weights.pickupDelay` | 15 | 12 | Share from the new rider's pickup wait. |
 
 Per passenger (on the passenger record):
 
 | Field | Default source | Description |
 |-------|----------------|-------------|
-| `maxPickupDelayMin` | `DEFAULT_PASSENGER_DELAY_BUDGETS` (10 min) | How many minutes **later than promised** this passenger's pickup may still arrive. Stage 3 prices each committed pickup stop with this value; stages 7 and 11 enforce it. Onboard passengers' pickups are skipped — they already happened. |
-| `maxDropDelayMin` | `DEFAULT_PASSENGER_DELAY_BUDGETS` (12 min) | How many minutes **later than promised** this passenger's drop may arrive. Same lifecycle as pickup delay: priced in stage 3, pre-filtered in stage 7, verified on real road times in stage 11. |
+| `maxPickupDelayMin` | `DEFAULT_PASSENGER_DELAY_BUDGETS` (8 min) | Fixed **minutes** of lateness allowed at pickup (not percent-based). Stage 3 prices each committed pickup stop with this value; stages 7 and 11 enforce it. Onboard passengers' pickups are skipped — they already happened. |
+| `maxDropDelayPercent` | `DEFAULT_PASSENGER_DELAY_BUDGETS` (50%) | Drop delay tolerance as a **percent of solo trip ETA**. Stage 3 converts this to `budgetMin`; stages 7 and 11 enforce it. Short solo trips (≤ 5 min) use **250%** instead. |
 | `seatsRequired` | Set per passenger | Number of seats this passenger occupies. Checked in request validation (stage 0) and again during segment-capacity walks in stop-sequence generation (stage 6). |
 | `allowsPooling` | `true` in most presets | Whether this passenger agrees to share a vehicle with strangers. Stage 11 rejects a pool if any **existing** rider on the candidate ride has this set to `false`. The new request has its own separate `poolingAllowed` flag. |
+| `maxWaitMinutes` (on the **request**) | Typically 6 in builders / sketch | Must be ≥ 0 (stage 0). Passed to OptimizeTours as a **soft** new-pickup deadline (`softPickupDeadlineMin`), not as Stage 11's hard wait cap. Hard pickup wait uses `maxNewPassengerPickupDelayMin` (8 min). |
+
+### Drop delay budget math
+
+Drop delays scale with solo trip ETA (`delayBudget.ts`):
+
+```
+soloEtaMin = drop.originalEtaMin − pickup.originalEtaMin   (waiting passenger)
+           = drop.originalEtaMin                          (already onboard)
+
+percent  = shortTripDelayPercent (250%)  when soloEtaMin ≤ shortTripSoloEtaMaxMin (5 min)
+         = min(passenger.maxDropDelayPercent, maxExistingPassengerDelayPercent) otherwise
+
+budgetMin = soloEtaMin × percent / 100
+latestAllowedDrop = originalEtaMin + budgetMin
+```
+
+**Example A — 20 min solo, 50%:** `budgetMin = 10 min`
+
+**Example B — 4 min solo (short trip):** `percent = 250%` → `budgetMin = 10 min`
+
+**Example C — passenger 30% vs global 50% on 16 min solo:** effective `30%` → `budgetMin = 4.8 min`
+
+Pickup delays remain fixed minutes (`maxPickupDelayMin`).
 
 ---
 
@@ -235,6 +268,17 @@ Stage order (fixed):
 Only drivers still “live” enter each next stage. Drivers outside the Layer 1 corridor
 search are marked **not evaluated** for the rest of the run. Stage 0 is special: if the
 **request** fails, the whole run stops.
+
+**Insertion → routing (Stages 6–9)** in one pass:
+
+```
+Stage 6  enumerate every legal pickup/drop slot (frozen committed spine)
+Stage 7  drop orderings that break committed delay promises (straight-line ETA)
+Stage 8  sort by straight-line added km; keep top maxRoutedInsertionsPerDriver (6)
+Stage 9  one OptimizeTours call per driver; cheapest kept sequence = firstSolution hint only
+```
+
+Google may return a different feasible order than the hint. Sequences #2–#6 are not routed separately. Full explanation: [Stages 6–9 — Enumeration vs Google](#stages-69--enumeration-vs-google).
 
 ---
 
@@ -321,6 +365,8 @@ If this stage fails, **no driver is evaluated**. The run aborts.
 |-----------|-----------|
 | `maxWaitMinutes ≥ 0` | `REQUEST_THRESHOLD_INVALID` |
 
+This field is **not** the Stage 11 hard pickup-wait cap. Stage 9 sends it to OptimizeTours as a **soft** new-pickup deadline (`softDeadlineCostPerHour: 50`). Stage 11 still uses `maxNewPassengerPickupDelayMin`.
+
 ---
 
 ### Stage 0 summary table
@@ -365,9 +411,8 @@ Idle drivers: corridor is just their location cell.
 1. Put new pickup in an H3 cell
 2. Search rings around that cell: ring 0, then 1, then 2… up to `maxH3Ring` (3)
 3. Any driver whose corridor touches a searched cell is **discovered**
-4. Stop expanding early if `minimumUsableCandidates` (10) usable drivers found
+4. Stop expanding early if `minimumUsableCandidates` (10) usable drivers found (see Check 1.1)
 
-“Usable” for the early-stop count means roughly: ONLINE + matching vehicle type + enough seats.  
 Drivers never discovered are **not evaluated** further — the engine stops their run at corridor.
 
 ---
@@ -377,7 +422,11 @@ Drivers never discovered are **not evaluated** further — the engine stops thei
 | Result | Code | Meaning |
 |--------|------|---------|
 | Pass | `CORRIDOR_MATCH` | Pickup touches this ride’s corridor cells |
-| Not evaluated | — | Ride id never returned by Layer 1 lookup |
+| Not evaluated | (empty reasons) | Ride id never returned by Layer 1 lookup — engine marks `NOT_EVALUATED`, no fail code |
+
+`H3_OUTSIDE_SEARCH` exists in `reasons.ts` but the corridor stage does **not** emit it: undiscovered drivers get empty `NOT_EVALUATED` verdicts so they never look “rejected.”
+
+“Usable” for the early-stop count is only: **ONLINE**, vehicle exists, type matches (or `ANY`), and `vehicle.totalSeats >= request.seatsRequired`. It does **not** use peak committed seats, wheelchair, or luggage — a full car can still count toward the 10. Those drivers are still returned as candidates so Stage 2 can reject them with a precise code.
 
 **Pass example**
 
@@ -531,8 +580,8 @@ For each stop still on the ride:
 
 | Stop type | When included | Budget used |
 |-----------|---------------|-------------|
-| PICKUP | Passenger still waiting | `maxPickupDelayMin` |
-| DROP | Always (until dropped) | `maxDropDelayMin` |
+| PICKUP | Passenger still waiting | `maxPickupDelayMin` (fixed minutes) |
+| DROP | Always (until dropped) | `maxDropDelayPercent` → `budgetMin` via solo ETA % |
 | PICKUP of onboard rider | **Skipped** | Already happened |
 
 Each budget entry:
@@ -542,13 +591,30 @@ stopId
 passengerId
 type (PICKUP or DROP)
 originalEtaMin   ← promised time (minutes from when ride was committed)
-budgetMin        ← how late is still OK
+soloEtaMin       ← solo trip ETA this percent is measured against (drops only)
+budgetPercent    ← percent applied (250% on short trips)
+budgetMin        ← allowed lateness in minutes
 ```
 
 **Meaning of a promise**
 
 ```
 Latest allowed arrival ≈ originalEtaMin + budgetMin
+```
+
+**Example — waiting passenger, pickup at 4 min, drop at 20 min, 50% drop tolerance**
+
+```
+soloEtaMin = 20 − 4 = 16 min
+budgetMin  = 16 × 50% = 8 min
+Drop may arrive as late as 20 + 8 = 28 min
+```
+
+**Example — short solo trip, pickup at 2 min, drop at 6 min**
+
+```
+soloEtaMin = 4 min  → short-trip rule applies
+budgetMin  = 4 × 250% = 10 min
 ```
 
 ---
@@ -563,7 +629,7 @@ Latest allowed arrival ≈ originalEtaMin + budgetMin
 
 **Fail example:** Both remaining drops already tolerate **0** extra minutes — inserting anyone would break a promise.
 
-**Pass example:** Drop A allows +8 min, Drop B allows +12 min.
+**Pass example:** Drop A allows +8 min (50% of 16 min solo), Drop B allows +10 min (250% of 4 min short solo).
 
 ---
 
@@ -605,7 +671,7 @@ Pickup 0.5 km off the line might mean ~1 km of real driving (out and back). Stag
 
 **Idle drivers: auto-pass** (`DIRECTION_COMPATIBLE`).
 
-Mid-trip drivers get **3 checks in order**. First fail wins.
+Mid-trip drivers get **2 checks in order**. First fail wins.
 
 ---
 
@@ -649,7 +715,7 @@ difference     = smallest angle between routeBearing and requestBearing   (0–1
 | New request pickup → drop for `requestBearing` | Per-passenger headings when multiple people are onboard |
 
 The corridor polyline is built in `corridor.ts` as `[driver.location, …remainingStops]`.  
-Check 5.1 reads only the **first and last** point of that list — every intermediate stop (pickups and drops in between) is ignored for bearing. Middle stops still matter for checks 5.2 and 5.3 (corridor distance and progress along the line).
+Check 5.1 reads only the **first and last** point of that list — every intermediate stop (pickups and drops in between) is ignored for bearing. Middle stops still matter for check 5.2 (progress along the line).
 
 ### Multi-stop route examples
 
@@ -700,65 +766,7 @@ It only uses **one** remaining-route compass: **V → last remaining stop**, not
 
 ---
 
-## Check 5.2 — Drop near corridor?
-
-**Question:** Is the new drop still related to our path, or far off to the side?
-
-The code classifies the drop with `classifyDropRelativeToRoute`:
-
-| Case | What is measured | Limit |
-|------|------------------|-------|
-| Drop beside the line | Perpendicular distance to line | ≤ **3 km** |
-| Drop **past last stop**, same direction (“forward extension”) | **Sideways** offset from last segment | ≤ **3 km** |
-
-| Fail code | Meaning |
-|-----------|---------|
-| `DESTINATION_OFF_CORRIDOR` | Drop too far off the corridor |
-
-### Examples
-
-**Fail — 15 km west**
-
-```
-V → A → B (south)
-Drop 15 km west of the line
-
-Sideways distance huge → FAIL
-```
-
-**Pass — 15 km south on same road**
-
-```
-V → A → B ─────────────→ Drop (further south)
-
-This is a forward extension.
-Sideways ≈ 0 → PASS check 5.2
-(Later stages may still reject if extension is too long)
-```
-
-**Fail — 15 km south but parallel road far left**
-
-```
-V → A → B
-              Drop (south but 5 km east of road)
-
-Lateral offset > 3 km → FAIL
-```
-
-### Why look at drop at all?
-
-Pickup-only matching is dangerous for pooling:
-
-```
-Pickup on the line ✅
-Drop far west ❌
-```
-
-Pickup looks great; the whole trip still pulls the car off its corridor. Check 5.2 catches that early.
-
----
-
-## Check 5.3 — Drop ahead of pickup along our path?
+## Check 5.2 — Drop ahead of pickup along our path?
 
 **Question:** Along **our** remaining line, does the new rider go **forward** or **backward**?
 
@@ -769,6 +777,8 @@ Pickup looks great; the whole trip still pulls the car off its corridor. Check 5
 | Condition | Fail code |
 |-----------|-----------|
 | `dropProgressKm < pickupProgressKm` | `DESTINATION_BEHIND_VEHICLE` |
+
+Off-corridor drops are **not** rejected here. If the detour is acceptable for everyone, stages 7–11 enforce that through delay and duration budgets.
 
 ### Examples
 
@@ -796,15 +806,8 @@ Line km:  0.5    2                  6
 Pickup projects at 4 km
 Drop projects at end / beyond (≈ 6+ km)
 
-drop ≥ pickup → PASS check 5.3
+drop ≥ pickup → PASS check 5.2
 ```
-
-### Check 5.2 vs 5.3 (difference)
-
-| | Check 5.2 | Check 5.3 |
-|---|-----------|-----------|
-| Asks | How far **off the side** is the drop? | Is drop **before/after** pickup on our path? |
-| Catches | Wrong corridor / sideways destination | Backward / return trip |
 
 ---
 
@@ -814,8 +817,44 @@ drop ≥ pickup → PASS check 5.3
 |-------|--------|---------|-----------|
 | — | Idle driver | auto-pass | — |
 | 1 | Bearing difference | ≤ 75° | `BEARING_INCOMPATIBLE` |
-| 2 | Drop off-corridor distance | ≤ 3 km | `DESTINATION_OFF_CORRIDOR` |
-| 3 | Drop progress ≥ pickup progress | — | `DESTINATION_BEHIND_VEHICLE` |
+| 2 | Drop progress ≥ pickup progress | — | `DESTINATION_BEHIND_VEHICLE` |
+
+---
+
+# Stages 6–9 — Enumeration vs Google
+
+Google **OptimizeTours** chooses the final stop sequence on real roads — but only within constraints, and only after cheap local stages have already narrowed the problem. **Why enumerate locally if the solver picks the order?**
+
+```
+LOCAL (Stages 6–8, free math)              GOOGLE (Stage 9, one paid call per driver)
+─────────────────────────────              ─────────────────────────────────────────
+• Generate every legal insertion slot      • Real road distance and duration
+• Reject if NO ordering fits capacity      • Final optimized visit sequence
+• Reject orderings that break promises     • Respect time windows + seat limits
+• Rank survivors by straight-line cost     • May interleave new rider anywhere legal
+• Keep top N (default 6) on context        • Uses cheapest (#1) as firstSolution hint only
+```
+
+**What Google receives**
+
+| Input | Effect |
+|-------|--------|
+| Shipments (pickup + drop per passenger) | Pickup-before-drop for each rider is automatic |
+| `committedPrecedence` | Committed stops keep their **relative order**; new rider may slot into gaps |
+| Hard time windows | From delay budgets priced in Stage 3 |
+| Seat capacity | Vehicle load limits |
+| New rider shipment | Skippable with penalty if truly infeasible |
+| `firstSolutionVisits` | **Hint only** — from the cheapest shortlisted ordering (`sequences[0]`) |
+
+**What local enumeration adds that Google alone does not cheaply answer**
+
+1. **“Does any legal insertion exist?”** — If every ordering overflows seats (Stage 6) or breaks every committed promise (Stage 7), fail the driver **without** an API call.
+2. **Per-ordering promise checks** — Delay to committed passenger A depends on *where* you insert the new stops. Stage 7 tests each ordering with straight-line ETA; the driver passes if **any one** ordering survives.
+3. **Pruning observability** — Stage 8 trims a large candidate set (e.g. 15 → 6) for metrics and to pick the best hint; see [Check 8.1](#check-81--shortlist-and-what-happens-next).
+
+4. **Warm-start for Google** — The cheapest shortlisted ordering becomes a `firstSolution` hint so OptimizeTours starts from a sensible insertion instead of searching cold. See [Why the firstSolution hint?](#why-the-firstsolution-hint) and [Would six calls with six different hints help?](#would-six-calls-with-six-different-hints-improve-matching).
+
+**Invalid orderings are never generated.** Pickup always before drop for the new rider; committed spine order is frozen. Sequences like `P1 → D1 → P2` (drop before pickup) or visiting the same pickup twice do not appear in enumeration or in Google's shipment model.
 
 ---
 
@@ -887,8 +926,11 @@ never allow occupancy > vehicle.totalSeats
 
 If at least one order survives:
 
-- Store those orders for next stages
+- Store **all** capacity-feasible orders on the context (`setSequences`) for Stages 7–8
 - Pass with `SEQUENCE_GENERATED`
+- Record `enumeratedSequences` and `capacityFeasibleSequences` metrics
+
+This stage does **not** call Google. It answers whether slotting the new pickup and drop into the frozen spine is physically possible on every segment.
 
 ---
 
@@ -926,8 +968,10 @@ if delayMin > budgetMin → this ordering fails
 | Condition | Result |
 |-----------|--------|
 | Idle / no budgets | Auto-pass |
-| At least one ordering survives | Pass |
+| At least one ordering survives | Pass — driver continues even if most orderings fail |
 | Every ordering breaches a budget | Fail |
+
+The driver is rejected only when **no** ordering keeps every committed promise. Google gets hard windows too, but Stage 7 avoids a paid call when the answer is already “impossible for every slot.”
 
 **Pass example**
 
@@ -942,12 +986,14 @@ Existing drop A still within +8 min budget → that ordering survives
 Every insertion pushes Drop B more than +12 min past promise → driver fails
 ```
 
+**Why test each ordering?** The same driver can be fine with `A → NewP → NewD → B` but fail with `NewP → NewD → A → B` because the second pushes A's pickup too late. Google could discover this, but only after routing.
+
 ---
 
 # Stage 8 — Detour lower bound
 
 **File:** `detourLowerBound.ts`  
-**Question:** Using only straight-line math, is this obviously too expensive?
+**Question:** Which insertion orderings should we send to the solver first?
 
 ```
 baselineKm = length of current corridor line
@@ -955,29 +1001,25 @@ candidateKm = length of [car → candidate stop order]
 addedKm = candidateKm − baselineKm
 ```
 
-Candidates are sorted by `addedKm` (cheapest first).
+Candidates are sorted by `addedKm` (cheapest first). This stage **does not reject** — it only ranks and shortlists. Passenger delay and ride-detour budgets in stage 11 decide whether a match is acceptable.
 
 ---
 
-## Check 8.1 — Corridor extension cap (only some pools)
+## Check 8.1 — Shortlist and what happens next
 
-If Stage 5 marked this as a **forward corridor extension** (drop continues past last stop, same direction):
+Keep at most `maxRoutedInsertionsPerDriver` (**6**) cheapest surviving candidates (by `addedKm`, ascending). The rest are dropped from the context list.
 
-| Condition | Default | Fail code |
-|-----------|---------|-----------|
-| Best `addedKm > maxCorridorExtensionKm` | **15 km** | `DETOUR_LOWER_BOUND_EXCEEDED` |
+**Example:** 4 remaining stops → Stage 6 generates 15 orderings → Stage 7 leaves 12 → Stage 8 keeps the 6 cheapest by straight-line added length.
 
-**Idle drivers:** not treated as detours here.
+| Sequence rank | After Stage 8 | Used in Stage 9? |
+|---------------|---------------|------------------|
+| #1 (cheapest) | Kept | **Yes** — converted to `firstSolutionVisits` hint |
+| #2 – #6 | Kept on context | **No** — not sent to Google separately |
+| #7+ | Discarded | — |
 
-**Normal (non-extension) pooling:** does **not** hard-fail on km here — only shortlists.
+Record metrics: `boundFeasibleSequences`, `shortlistedSequences`, `lowerBoundAdditionalKm` (from the cheapest).
 
----
-
-## Check 8.2 — Shortlist for Google
-
-Keep at most `maxRoutedInsertionsPerDriver` (**6**) cheapest surviving candidates.
-
-This reduces Stage 9 cost.
+**Important:** This is **not** six OptimizeTours calls. Stage 9 makes **one** call per driver and passes only `sequences[0]` as `injectedFirstSolutionRoutes`. Google may still return a different feasible order than the hint. Sequences #2–#6 remain for debugging and for `attemptStats.geographicallyPruned` in Stage 10; there is no fallback loop that retries hint #2 if hint #1 fails.
 
 ---
 
@@ -986,34 +1028,106 @@ This reduces Stage 9 cost.
 **File:** `roadRouting.ts`  
 **Question:** What does Google OptimizeTours say for real roads / times?
 
-One optimizer call **per live driver**.
+**One OptimizeTours call per live driver** — not one call per shortlisted sequence.
 
-Also computes:
+Also computes (via Routes API, not the solver):
 
 - **Solo** new-rider trip: pickup → drop (for later ride-detour math)
-- **Baseline** existing trip: car → remaining stops via Routes API
+- **Baseline** existing trip: car → remaining stops
 
 ---
 
 ## What is sent to the solver
 
-- Shipments for committed passengers (mandatory)
-- Shipment for new rider (skippable with penalty)
-- Precedence / injection so committed relative order is preserved
-- Time windows from delay budgets
+Built in `ShipmentModelBuilder.ts`, sent via `optimizerProxy.ts`:
+
+| Piece | Role |
+|-------|------|
+| **Vehicle** | Starts at driver **current location**; seat capacity |
+| **Committed shipments** | Mandatory (`penaltyCost: null`); hard pickup/drop deadlines from Stage 3 budgets. Pickup deadline = `max(originalEtaMin, mock travel floor) + maxPickupDelayMin`. Drop deadline = `max(originalEtaMin, mock travel floor) + budgetMin`. Mock floors are multiplied by `GOOGLE_TRAVEL_SLACK` (2) so real Google travel times do not immediately invalidate the injected spine. |
+| **New rider shipment** | Skippable with finite penalty (`NEW_PASSENGER_PENALTY_COST` = 1000) — infeasibility becomes `skippedShipments[]`. Soft pickup deadline = `request.maxWaitMinutes`. |
+| **`committedPrecedence`** | Consecutive committed stops → Google `precedenceRules`; relative order locked, gaps open for interleaving |
+| **`firstSolutionVisits`** | From `getSequences(driverId)[0]` — optional starting route; **not** a hard lock |
+| **`lockedVisits`** | Legacy append-only lock; empty in current pooling path |
+
+**What Google decides:** Final visit order on real roads, respecting precedence, windows, and capacity. It may place the new pickup/drop in a different gap than the hint if that is cheaper and still feasible.
+
+**What Google does not receive:** The other shortlisted sequences (#2–#6). If the solve skips the new rider, the pipeline does not automatically retry with the next hint.
+
+---
+
+## Why the `firstSolution` hint?
+
+OptimizeTours is a **heuristic solver**, not an exhaustive “try every ordering” search. With several shipments, hard time windows, seat limits, and precedence rules, the search space is large. A poor or empty starting point can cause:
+
+- **Slow solves** — hitting `optimizerTimeoutMs` before a good route is found
+- **False infeasibility** — new rider appears in `skippedShipments` even when *some* legal insertion exists on real roads
+- **Suboptimal first feasible route** — the solver never explored a better region early
+
+The hint (`firstSolutionVisits` → `injectedFirstSolutionRoutes` in `optimizerProxy.ts`) is a **warm start**:
+
+```
+“Here is a visit order that looked cheap on straight-line math
+ and passed local capacity + promise checks — start from here.”
+```
+
+| Hint | Hard lock |
+|------|-----------|
+| Suggested starting sequence for the solver | Committed relative order still enforced by `precedenceRules` |
+| Built from `sequences[0]` (cheapest after Stage 8) | Google may return a **different** feasible order if it is better on roads |
+| Improves speed and feasibility | Does not force that exact stop order |
+
+Stages 6–7 already proved **at least one** ordering is legally possible and promise-safe; Stage 8 picks the **cheapest straight-line** one to seed Stage 9. The hint bridges cheap geometry and expensive road routing — it does not replace Google’s optimization.
+
+---
+
+## Would six calls with six different hints improve matching?
+
+**Not done today.** The lab makes **one** OptimizeTours call per driver with **one** hint. The shortlist of six exists to choose that hint and for metrics — not to run the solver six times.
+
+### When multiple hints *could* help
+
+| Situation | Why a second hint might succeed where the first fails |
+|-----------|--------------------------------------------------------|
+| Hint #1 is straight-line cheap but **bad on real roads** (river, one-way, median) | Hint #2 uses a different insertion slot that routes better |
+| First solve returns **`OPTIMIZER_INFEASIBLE`** (new rider skipped) | Another slot may still be feasible once Google fetches real travel times |
+| Solver **timeout** with a weak starting route | A different warm start may converge faster |
+
+**Example:** Cheapest by crow-flight might be `NewP → NewD → A → B`, but roads make that terrible. `A → NewP → NewD → B` might be slightly longer in straight-line but much better on roads — hint #1 misleads; hint #2 might succeed.
+
+### When extra calls would not help much
+
+| Situation | Why |
+|-----------|-----|
+| Truly infeasible (capacity, windows, precedence) | Every hint hits the same constraints → all fail |
+| Google already finds the best feasible order from one good hint | Extra calls duplicate the same problem |
+| Shortlisted hints are all similar insertions | Little diversity in starting points |
+
+Each retry would send the **same** shipments, windows, capacity, and precedence — only the **starting route** changes. You are not solving six different problems; you are solving **one** problem six times with six starting points.
+
+### Tradeoff (why the lab uses one call)
+
+| One call + one hint (current) | Six calls + six hints (hypothetical) |
+|------------------------------|--------------------------------------|
+| Lower API cost and latency | ~6× OptimizeTours cost per driver |
+| Stays within `maxOptimizerCallsPerRun` longer | Burns optimizer budget faster |
+| May miss a feasible slot if hint #1 misleads on roads | Higher chance to find *some* feasible insertion |
+| Appropriate for a cost-controlled lab | Better match rate when geometry ≠ roads |
+
+A plausible future enhancement: on `OPTIMIZER_INFEASIBLE`, retry with `sequences[1]`, then `[2]`, … up to `maxRoutedInsertionsPerDriver`. That would actually consume the shortlist; **the current code does not implement this retry loop.**
 
 ---
 
 ## Possible outcomes
 
-| Result | Code | Meaning |
-|--------|------|---------|
-| Pass | `OPTIMIZER_SOLVED` | Got a stop sequence + road legs |
-| Fail | `OPTIMIZER_INFEASIBLE` | New rider skipped — cannot fit |
-| Fail | `OPTIMIZER_MANDATORY_SHIPMENT_SKIPPED` | Committed rider was dropped (model/error) |
-| Fail | `OPTIMIZER_CALL_FAILED` | API / auth / validation error |
-| Not evaluated | `OPTIMIZER_BUDGET_EXCEEDED` | Too many optimizer calls this run |
-| Fail | `ROUTE_LEG_MISMATCH` | Bad response shape |
+| Result | Code | Status | Meaning |
+|--------|------|--------|---------|
+| Pass | `OPTIMIZER_SOLVED` | PASSED | Got a stop sequence + road legs |
+| Fail | `OPTIMIZER_INFEASIBLE` | FAILED | New rider skipped — cannot fit |
+| Fail | `OPTIMIZER_MANDATORY_SHIPMENT_SKIPPED` | FAILED | Committed rider was dropped (model/error) |
+| Not evaluated | `OPTIMIZER_CALL_FAILED` | NOT_EVALUATED | API / auth-other-than-missing-credentials / validation error. Missing Google credentials **throw** and abort the run. |
+| Not evaluated | `OPTIMIZER_BUDGET_EXCEEDED` | NOT_EVALUATED | Too many optimizer calls this run |
+| Fail | `ROUTE_LEG_MISMATCH` | FAILED | Bad response shape (`legs.length !== visits.length`) |
 
 **Pass example:** Solver returns V → A → NewP → NewD → B with road legs.  
 **Fail example:** New rider appears in `skippedShipments` → `OPTIMIZER_INFEASIBLE`.
@@ -1038,9 +1152,23 @@ Also computes:
 | `additionalDistanceKm` | `new − original` |
 | `detourPercent` | `(additional / original) × 100` if mid-trip, else 0 |
 | `additionalDurationMin` | Extra minutes of driving |
-| `newPassengerPickupDelayMin` | Minutes until new pickup (= wait from now) |
+| `newPassengerPickupDelayMin` | Minutes until new pickup (= wait from now). Same as pickup ETA; there is no earlier promise. |
 | `newPassengerRideDetourMin` | `(dropEta − pickupEta) − soloDuration` (floored at 0) |
-| `maximumExistingPassengerDelayMin` | Worst delay vs each committed promise |
+| `maximumExistingPassengerDelayMin` | Worst **drop** delay vs the **baseline** remaining route (solved arrival − baseline arrival). Pickup delays are recorded on the insertion object for the UI but are **not** included in this maximum. |
+
+### Insertion attempt stats (debug UI)
+
+Stage 10 also records how many orderings were considered vs pruned (`DriverDetailSheet`):
+
+| Stat | Meaning |
+|------|---------|
+| `enumerated` | Total legal orderings from Stage 6 |
+| `occupancyPruned` | Stage 6: `enumeratedSequences − capacityFeasibleSequences` |
+| `geographicallyPruned` | `capacityFeasibleSequences − shortlistedSequences` — includes **both** Stage 7 time-window drops and Stage 8 shortlist discards (the metric never subtracts Stage 7 on its own) |
+| `routed` | Always **1** — one OptimizeTours call per driver |
+| `feasible` | **1** if the solver served the new rider |
+
+So a line like “6 shortlisted, 1 routed” is expected — the six are not six Google runs.
 
 ### Examples
 
@@ -1053,7 +1181,7 @@ Additional = 5.6 km
 Detour % = 112%
 ```
 
-Note: current hard reject stage uses **km/minutes/delays**, not a fixed 15% detour cap.
+Note: current hard reject stage uses **promised delay minutes** (vs Stage 3 `originalEtaMin + budgetMin`) plus new-rider wait/ride-detour minutes and pooling flags. It does **not** reject on `detourPercent`, extra km, corridor extension km, or extra duration. Those numbers are display/metrics only. Codes like `ROUTE_DETOUR_TOO_HIGH` / `ADDITIONAL_DISTANCE_TOO_HIGH` / `CORRIDOR_EXTENSION_TOO_LONG` / `ADDITIONAL_DURATION_TOO_HIGH` exist in `reasons.ts` but are **not emitted** by Stage 11.
 
 **New rider ride detour**
 
@@ -1074,60 +1202,36 @@ Binary pass/fail. Fixed check order.
 
 ---
 
-## Part A — Mid-trip cost / delay (only if driver has remaining stops)
+## Part A — Mid-trip delay (only if driver has remaining stops)
 
-### Check 11.1 — Corridor extension too long (road)
+### Check 11.1 — Existing passenger delay budgets
 
-If this was a same-direction extension pool:
-
-| Condition | Default | Fail code |
-|-----------|---------|-----------|
-| `additionalDistanceKm > maxCorridorExtensionKm` | **15 km** | `CORRIDOR_EXTENSION_TOO_LONG` |
-
----
-
-### Check 11.2 — Extra duration too high
-
-| Condition | Default | Fail code |
-|-----------|---------|-----------|
-| `additionalDurationMin > maxAdditionalDurationMin` | **12 min** | `ADDITIONAL_DURATION_TOO_HIGH` |
-
----
-
-### Check 11.3 — Existing passenger personal budgets
-
-For each committed stop:
+For each committed stop (pickup in minutes, drop from stage 3 `budgetMin`):
 
 ```
-delay = solvedArrival − originalEtaMin
-if delay > that passenger’s budgetMin → FAIL
+delay = solvedArrival − originalEtaMin     (the promise, not the Stage 10 baseline delta)
+if delay > budgetMin → FAIL
 ```
 
 | Fail code | Meaning |
 |-----------|---------|
 | `EXISTING_PASSENGER_DELAY_TOO_HIGH` | Someone already on the ride is too late |
 
----
-
-### Check 11.4 — Global existing-delay ceiling
-
-| Condition | Default | Fail code |
-|-----------|---------|-----------|
-| Worst existing delay > `maxExistingPassengerDelayMin` | **12 min** | `EXISTING_PASSENGER_DELAY_TOO_HIGH` |
+The effective drop `budgetMin` already includes both the passenger's `maxDropDelayPercent` and the global `maxExistingPassengerDelayPercent` (whichever is stricter), plus the short-trip 250% rule when applicable.
 
 ---
 
 ## Part B — New rider limits (all drivers)
 
-### Check 11.5 — New pickup wait
+### Check 11.2 — New pickup wait
 
 | Condition | Default | Fail code |
 |-----------|---------|-----------|
-| Wait > `maxNewPassengerPickupDelayMin` | **10 min** | `NEW_PASSENGER_PICKUP_DELAY_TOO_HIGH` |
+| Wait > `maxNewPassengerPickupDelayMin` | **8 min** | `NEW_PASSENGER_PICKUP_DELAY_TOO_HIGH` |
 
 ---
 
-### Check 11.6 — New rider’s own trip stretched too much
+### Check 11.3 — New rider’s own trip stretched too much
 
 | Condition | Default | Fail code |
 |-----------|---------|-----------|
@@ -1139,25 +1243,25 @@ if delay > that passenger’s budgetMin → FAIL
 
 Skipped for pure solo / idle matches.
 
-### Check 11.7 — Vehicle allows pooling
+### Check 11.4 — Vehicle allows pooling
 
 | Fail code |
 |-----------|
 | `POOLING_NOT_SUPPORTED` |
 
-### Check 11.8 — Request allows pooling
+### Check 11.5 — Request allows pooling
 
 | Fail code |
 |-----------|
 | `POOLING_NOT_ALLOWED_BY_REQUEST` |
 
-### Check 11.9 — Every existing rider allows pooling
+### Check 11.6 — Every existing rider allows pooling
 
 | Fail code |
 |-----------|
 | `POOLING_NOT_ALLOWED_BY_EXISTING_RIDER` |
 
-### Check 11.10 — Max pooled passengers
+### Check 11.7 — Max pooled passengers
 
 | Condition | Default | Fail code |
 |-----------|---------|-----------|
@@ -1169,16 +1273,13 @@ Skipped for pure solo / idle matches.
 
 | Order | Applies when | Check | Default | Fail code |
 |-------|--------------|--------|---------|-----------|
-| 1 | Mid-trip + extension | Extra road km | 15 km | `CORRIDOR_EXTENSION_TOO_LONG` |
-| 2 | Mid-trip | Extra duration | 12 min | `ADDITIONAL_DURATION_TOO_HIGH` |
-| 3 | Mid-trip | Per-passenger delay budget | personal | `EXISTING_PASSENGER_DELAY_TOO_HIGH` |
-| 4 | Mid-trip | Global existing delay | 12 min | `EXISTING_PASSENGER_DELAY_TOO_HIGH` |
-| 5 | Always | New pickup wait | 10 min | `NEW_PASSENGER_PICKUP_DELAY_TOO_HIGH` |
-| 6 | Always | New ride detour | 12 min | `NEW_PASSENGER_RIDE_DETOUR_TOO_HIGH` |
-| 7 | Has riders | Vehicle pooling on | — | `POOLING_NOT_SUPPORTED` |
-| 8 | Has riders | Request pooling on | — | `POOLING_NOT_ALLOWED_BY_REQUEST` |
-| 9 | Has riders | Existing riders allow share | — | `POOLING_NOT_ALLOWED_BY_EXISTING_RIDER` |
-| 10 | Has riders | Pool size | ≤ 4 | `MAX_POOLED_PASSENGERS_EXCEEDED` |
+| 1 | Mid-trip | Per-stop delay budget (drop = % of solo ETA) | personal + global | `EXISTING_PASSENGER_DELAY_TOO_HIGH` |
+| 2 | Always | New pickup wait | 8 min | `NEW_PASSENGER_PICKUP_DELAY_TOO_HIGH` |
+| 3 | Always | New ride detour | 12 min | `NEW_PASSENGER_RIDE_DETOUR_TOO_HIGH` |
+| 4 | Has riders | Vehicle pooling on | — | `POOLING_NOT_SUPPORTED` |
+| 5 | Has riders | Request pooling on | — | `POOLING_NOT_ALLOWED_BY_REQUEST` |
+| 6 | Has riders | Existing riders allow share | — | `POOLING_NOT_ALLOWED_BY_EXISTING_RIDER` |
+| 7 | Has riders | Pool size | ≤ 4 | `MAX_POOLED_PASSENGERS_EXCEEDED` |
 
 ---
 
@@ -1191,13 +1292,15 @@ Skipped for pure solo / idle matches.
 
 | Component | Default weight | Raw value | Normalized against |
 |-----------|----------------|-----------|--------------------|
-| Driver impact | 30% | Extra duration (0 if idle) | `maxAdditionalDurationMin` |
-| Existing rider impact | 30% | Worst existing delay | `maxExistingPassengerDelayMin` |
-| New rider impact | 25% | New ride detour minutes | `maxNewPassengerRideDetourMin` |
-| Pickup wait | 15% | New pickup wait | `maxNewPassengerPickupDelayMin` |
+| Driver impact | 30 | Extra duration minutes (forced **0** if idle) | `maxNewPassengerRideDetourMin` |
+| Existing rider impact | 30 | Worst **drop** delay vs **baseline** (`maximumExistingPassengerDelayMin`) | **Largest** drop `budgetMin` from Stage 3 (`maximumExistingPassengerDelayBudgetMin`), not the tightest |
+| New rider impact | 25 | New ride detour minutes | `maxNewPassengerRideDetourMin` |
+| Pickup wait | 15 | New pickup wait | `maxNewPassengerPickupDelayMin` |
+
+Weights are rescaled to sum to 1 (`normalizeWeights`). Each component is `clamp((raw / threshold) × 100, 0, 100)` then multiplied by its share.
 
 ```
-finalScore = sum(normalized × weight)
+finalScore = sum(normalized × weightShare)
 ```
 
 **Example**
@@ -1226,7 +1329,7 @@ Pass reason: `COMMIT_READY`.
 
 ---
 
-# 20. Full story examples
+# 21. Full story examples
 
 ## Example A — Happy pool (2 onboard + 1 new, same corridor)
 
@@ -1237,33 +1340,37 @@ New pickup near A, new drop a bit after B on same road
 
 | Stage | Result |
 |-------|--------|
-| 0–1 | Pass |
-| 2 | Budgets for A,B |
-| 3–4 | Pickup on corridor |
-| 5 | South bearing ✅, drop extension ✅, drop after pickup ✅ |
-| 6 | Several legal orders |
-| 7 | At least one order keeps promises |
-| 8 | Extension ≤ 15 km straight-line |
-| 9 | Optimizer solves |
-| 10 | Measures costs |
-| 11 | Pass if duration/delays within caps |
+| 0 | Request valid |
+| 1 | Corridor match |
+| 2 | ONLINE / vehicle / seats OK |
+| 3 | Delay budgets for A and B |
+| 4 | Pickup close to remaining-route line |
+| 5 | South bearing; drop progress ≥ pickup progress (extension km is recorded, not a reject) |
+| 6 | e.g. 6 legal orders with 2 remaining drops `(n+1)(n+2)/2` |
+| 7 | e.g. 4 survive promise checks; 2 fail because NewP before A delays A too much |
+| 8 | Keep 4 (under cap 6); cheapest by straight-line added km becomes hint #1 |
+| 9 | **One** Google call; hint from #1; solver may return e.g. `V → A → NewP → NewD → B` |
+| 10 | `attemptStats`: enumerated 6, occupancyPruned 0, geographicallyPruned 2 (`6 − 4`), **routed 1** |
+| 11 | Pass if promised delays, new wait, new ride detour, and pooling flags are OK |
 | 12–13 | Rank + commit plan |
 
 ---
 
-## Example B — Pickup good, drop wrong way
+## Example B — Pickup good, drop off corridor
 
 ```
 Pickup on line ✅
-Drop 15 km west ❌
+Drop 15 km west (same general direction)
 ```
 
 | Stage | Result |
 |-------|--------|
-| 3–4 | May pass |
-| **5.1 / 5.2** | Fail bearing and/or off-corridor |
+| 1, 4 | Pickup may pass corridor + distance |
+| **5.1** | May pass if bearing within 75° |
+| **5.2** | Passes if drop projects at/after pickup along the remaining line |
+| 7–11 | May **fail** if delay or ride-detour budgets are exceeded |
 
-Never reaches Google.
+May reach Google if direction passes.
 
 ---
 
@@ -1275,11 +1382,12 @@ Drop 20 km further south on same road
 
 | Stage | Result |
 |-------|--------|
-| 5 | Direction often **passes** (extension) |
-| 8 or 11 | May **fail** extension km / duration |
+| 5 | Direction often **passes** (off-corridor drop is not rejected here) |
+| 8 | **Shortlists** only — does not reject on distance |
+| 11 | May **fail** if passenger delay or ride-detour budgets are exceeded |
 
 Direction = “compatible path.”  
-Hard limits = “is the extra cost acceptable?”
+Hard limits = “is the harm to each rider still within their budget?”
 
 ---
 
@@ -1292,12 +1400,14 @@ Request: India Gate → AIIMS
 
 | Stage | Result |
 |-------|--------|
-| 1 | Pass if vehicle/seats OK |
-| 3–4 | Distance from car |
+| 1 | Pass if pickup is near the idle-car cell (corridor is a single point) |
+| 2 | Vehicle / seats / status |
+| 3 | No committed budgets |
+| 4 | Distance = car → pickup |
 | 5 | Auto-pass direction |
 | 6 | Only order: NewP → NewD |
-| 8 | Not treated as detour |
-| 9–11 | Solo feasibility + wait/ride-detour caps |
+| 8 | Idle: not treated as a detour for scoring later |
+| 9–11 | Solo feasibility + wait / ride-detour caps (pooling checks skipped — no existing riders) |
 | 12 | Driver impact scored as 0 extra |
 
 ---
@@ -1308,7 +1418,7 @@ Request: India Gate → AIIMS
 Driver has ride but status = BUSY
 ```
 
-Fails Stage 1 (`DRIVER_BUSY`) immediately.  
+Fails **Stage 2** (`DRIVER_BUSY`) after being discovered in the corridor.  
 For pooling tests, keep mid-trip drivers **ONLINE**.
 
 ---
@@ -1319,41 +1429,63 @@ For pooling tests, keep mid-trip drivers **ONLINE**.
 4-seater, 3 seats already onboard, new rider needs 2 seats
 ```
 
-May fail Stage 1 conservative check, or Stage 6 segment capacity if peak collides.
+May fail **Stage 2** conservative check (`INSUFFICIENT_CAPACITY`), or **Stage 6** segment capacity if the peak only collides for some insert slots.
 
 ---
 
-# 21. “Why did I fail?” cheat sheet
+## Example G — Many insertions, one Google call
+
+Driver with **4 remaining stops** → Stage 6 generates **15** orderings.
+
+```
+Stage 6   15 legal orders (capacity OK on every segment)
+Stage 7   12 survive (3 orderings push a committed drop past its budget)
+Stage 8   keep 6 cheapest by straight-line added km; discard 6 more
+Stage 9   1 OptimizeTours call; only sequences[0] → firstSolution hint
+          Google returns final road sequence (may differ from hint)
+Stage 10  geographicallyPruned = capacityFeasible − shortlisted = 15 − 6 = 9
+          (the 3 Stage-7 failures are inside that 9); routed = 1
+```
+
+Raising `maxRoutedInsertionsPerDriver` keeps more candidates on the context for metrics and a potentially better **first** hint — it does **not** multiply OptimizeTours calls unless a hint-retry loop is added (see [Would six calls with six different hints improve matching?](#would-six-calls-with-six-different-hints-improve-matching)).
+
+---
+
+# 22. “Why did I fail?” cheat sheet
 
 | What you see | Likely stage | What to check |
 |--------------|--------------|---------------|
-| Request invalid | 0 | Pickup/drop/passenger/seats |
-| Offline / paused / busy | 1 | Driver status |
-| Wrong vehicle / luggage / wheelchair | 1 | Vehicle vs request |
-| Not enough seats | 1 or 6 | Capacity |
-| No flexibility | 2 | Delay budgets all zero |
-| Outside corridor | 3 | Pickup vs remaining route |
+| Request invalid | 0 | Pickup/drop/passenger/seats/`maxWaitMinutes` |
+| Never judged / empty corridor | 1 | Pickup vs remaining route; driver was not discovered |
+| Offline / paused / busy | 2 | Driver status (`BUSY` ≠ mid-trip) |
+| Wrong vehicle / luggage / wheelchair | 2 | Vehicle vs request |
+| Not enough seats | 2 or 6 | Conservative peak vs segment walk |
+| No flexibility | 3 | Every remaining delay budget ≤ 0 |
 | Pickup too far from route | 4 | Distance to line > 1.5 km |
 | Wrong direction | 5.1 | Bearing > 75° |
-| Destination off corridor | 5.2 | Drop sideways > 3 km |
-| Destination behind | 5.3 | Drop progress < pickup progress |
-| No legal sequence / capacity | 6 | Insert orders / seats |
+| Destination behind | 5.2 | Drop progress < pickup progress |
+| No legal sequence / capacity | 6 | `SEGMENT_CAPACITY_EXCEEDED` or `WAYPOINT_LIMIT_EXCEEDED` |
 | Committed delay too high | 7 | Promises vs rough ETAs |
-| Extension lower bound | 8 | Straight-line added km > 15 |
-| Optimizer failed / infeasible | 9 | Google / model / budgets |
-| Extra duration / extension / waits | 11 | Hard caps |
-| Pooling forbidden | 11 | Policy flags |
+| Shortlist (not separate routes) | 8 → 9 | Up to 6 kept; only #1 is solver hint; `routed` is always 1 |
+| Optimizer infeasible / skipped rider | 9 | `OPTIMIZER_INFEASIBLE` |
+| Optimizer call/budget | 9 | `OPTIMIZER_CALL_FAILED` / `OPTIMIZER_BUDGET_EXCEEDED` are **not evaluated** |
+| Passenger delay / ride detour / waits | 11 | Hard caps vs promises and settings |
+| Pooling forbidden | 11 | Vehicle / request / existing rider / max pooled |
 
 ---
 
-# 22. Known lab limits
+# 23. Known lab limits
 
-1. **Direction ≠ cost.** A trip can pass Stage 5 and still fail Stage 8/11 on length or time.
-2. **Stage 6 finds many insert positions; Stage 9 may choose a different feasible road plan.** Trust Stage 9–11 for final cost.
-3. **`detourPercent` is measured** in Stage 10 for display/metrics; **hard reject** currently uses extension km, duration, and delay budgets (not a fixed 15% detour setting).
-4. **`BUSY` blocks pooling** — use `ONLINE` for mid-trip poolable drivers.
-5. **Optimizer proxy is dev-only** (`bun run dev`). Built static apps cannot call Stage 9.
-6. **Scoring ranks drivers**, not multiple sequences per driver (one solver answer per driver).
+1. **Direction ≠ cost.** A trip can pass Stage 5 and still fail Stage 11 on passenger delay or ride-detour budgets. Stage 5 does not reject off-corridor drops.
+2. **Enumeration ≠ final route.** Stages 6–8 explore insertion slots with straight-line math; Stage 9 returns the road-network sequence. Google may differ from the `firstSolution` hint and from every enumerated ordering.
+3. **`maxRoutedInsertionsPerDriver` shortlists, it does not multiply API calls.** Only `sequences[0]` becomes the solver hint; sequences #2–#6 are not routed separately and there is no retry with the next hint on failure. See [Would six calls with six different hints improve matching?](#would-six-calls-with-six-different-hints-improve-matching) for when multi-hint retries could help and why the lab does not do them today.
+4. **`detourPercent` / extra km / extra duration / corridor extension are measured, not hard-rejected.** Stage 11 uses promised delay minutes, new pickup wait, new ride detour, and pooling policy only.
+5. **`BUSY` blocks pooling** — use `ONLINE` for mid-trip poolable drivers.
+6. **Optimizer proxy is dev-only** (`bun run dev`). Built static apps cannot call Stage 9.
+7. **Scoring ranks drivers**, not multiple sequences per driver (one solver answer per driver). Existing-rider scoring uses drop delay vs the **baseline route**, while Stage 11 uses delay vs the **promise** (`originalEtaMin`).
+8. **No hint retry loop.** If OptimizeTours skips the new rider with hint #1, hints #2–#6 are not tried automatically — a possible future improvement at higher API cost.
+9. **`maxRoutingCallsPerRun` is not mapped to a stage verdict today.** `InstrumentedRoutingEngine` throws `RoutingBudgetExceededError`; Stage 9 only special-cases optimizer budget/credentials. Stage 10 swallows polyline `getRoute` failures and falls back to waypoints.
+10. **Reason codes in `reasons.ts` that current stages do not emit** include `H3_CANDIDATE_FOUND`, `H3_OUTSIDE_SEARCH`, `CORRIDOR_NO_MATCH`, `NO_LEGAL_SEQUENCE`, `DETOUR_LOWER_BOUND_EXCEEDED`, `ROUTE_DETOUR_TOO_HIGH`, `ADDITIONAL_DISTANCE_TOO_HIGH`, `CORRIDOR_EXTENSION_TOO_LONG`, `ADDITIONAL_DURATION_TOO_HIGH`, `ROUTE_NO_FEASIBLE_INSERTION`, `ROUTING_BUDGET_EXCEEDED`, `ROUTING_FAILED`. Treat them as reserved labels, not live funnel outcomes.
 
 ---
 
@@ -1361,11 +1493,17 @@ May fail Stage 1 conservative check, or Stage 6 segment capacity if peak collide
 
 | Topic | Path |
 |-------|------|
-| Stage registry / order | `apps/simulation/src/matching/stages/index.ts` |
+| Stage registry / order | `apps/simulation/src/matching/stages/index.ts`, `apps/simulation/src/domain/settings.ts` (`DEFAULT_STAGE_ORDER`) |
+| Engine / not-evaluated | `apps/simulation/src/matching/engine.ts` |
+| Delay budget math | `apps/simulation/src/matching/delayBudget.ts` |
 | Defaults | `apps/simulation/src/domain/settings.ts` |
 | Reason codes | `apps/simulation/src/matching/reasons.ts` |
 | Corridor building | `apps/simulation/src/matching/corridor.ts` |
 | Insertion enumeration | `apps/simulation/src/matching/insertion/enumerate.ts` |
+| Detour shortlist (Stage 8) | `apps/simulation/src/matching/stages/detourLowerBound.ts` |
+| Optimizer model + hint | `apps/simulation/src/optimization/ShipmentModelBuilder.ts` |
+| Road routing (Stage 9) | `apps/simulation/src/matching/stages/roadRouting.ts` |
+| OptimizeTours proxy | `apps/simulation/server/optimizerProxy.ts` |
 | Occupancy walk | `apps/simulation/src/matching/occupancy.ts` |
 | Geo helpers (bearing, projection) | `apps/simulation/src/lib/geo.ts` |
 | High-level design | `docs/Overview.md` |

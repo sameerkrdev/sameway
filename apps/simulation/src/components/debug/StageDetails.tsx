@@ -75,6 +75,8 @@ interface StopBudgetNote {
   passengerId: string;
   type: "PICKUP" | "DROP";
   originalEtaMin: number;
+  soloEtaMin: number;
+  budgetPercent: number;
   budgetMin: number;
 }
 
@@ -108,7 +110,10 @@ function StageNotes({ stage }: { stage: StageResult }) {
             {entries.map((entry) => (
               <div key={entry.stopId} className="tabular text-[10px] text-[var(--muted-foreground)]">
                 {entry.passengerId} {entry.type.toLowerCase()} — promised{" "}
-                {entry.originalEtaMin.toFixed(1)} min, tolerates +{entry.budgetMin} min
+                {entry.originalEtaMin.toFixed(1)} min
+                {entry.type === "DROP"
+                  ? `, solo ${entry.soloEtaMin.toFixed(1)} min → +${entry.budgetMin.toFixed(1)} min (${entry.budgetPercent}%)`
+                  : `, tolerates +${entry.budgetMin.toFixed(1)} min`}
               </div>
             ))}
           </div>

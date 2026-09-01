@@ -1,6 +1,7 @@
 import type { LatLng } from "@/domain/entities";
 
 import { computeExistingPassengerDelays, computeExistingPickupDelays } from "../delays";
+import type { StopDelayBudget } from "./operationalState";
 import { computeSegmentOccupancy } from "../occupancy";
 import { reason } from "../reasons";
 import type {
@@ -95,6 +96,10 @@ export const incrementalCostStage: MatchingStage = {
         newPassengerPickupDelayMin: round(newPassengerPickupEtaMin, 2),
         newPassengerRideDetourMin: round(newPassengerRideDetourMin, 2),
         maximumExistingPassengerDelayMin: round(maximumDelayMin, 2),
+        maximumExistingPassengerDelayBudgetMin: round(
+          maximumDropDelayBudgetMin(context.getDelayBudgets(driverId)),
+          2,
+        ),
         peakOccupancy: occupancy.peakOccupancy,
         roadDistanceKm: round(solution.totalDistanceKm, 3),
         roadEtaMin: round(newPassengerPickupEtaMin, 2),
@@ -191,6 +196,11 @@ function dedupeWaypoints(waypoints: LatLng[]): LatLng[] {
   }
 
   return deduped;
+}
+
+function maximumDropDelayBudgetMin(budgets: readonly StopDelayBudget[]): number {
+  const dropBudgets = budgets.filter((budget) => budget.type === "DROP").map((budget) => budget.budgetMin);
+  return dropBudgets.length === 0 ? 0 : Math.max(...dropBudgets);
 }
 
 function round(value: number, digits: number): number {

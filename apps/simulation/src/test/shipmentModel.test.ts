@@ -4,7 +4,7 @@ import type { Passenger, RideRequest } from "@/domain/entities";
 import { buildOptimizeToursRequest } from "@/optimization/ShipmentModelBuilder";
 import type { ProposedStop } from "@/matching/types";
 
-function passenger(id: string, pickupBudget: number, dropBudget: number): Passenger {
+function passenger(id: string, pickupBudget: number, dropPercent: number): Passenger {
   return {
     id,
     name: id,
@@ -13,7 +13,7 @@ function passenger(id: string, pickupBudget: number, dropBudget: number): Passen
     specialRequirements: [],
     allowsPooling: true,
     maxPickupDelayMin: pickupBudget,
-    maxDropDelayMin: dropBudget,
+    maxDropDelayPercent: dropPercent,
   };
 }
 
@@ -50,7 +50,8 @@ const baseInput = {
   vehicleStart: { lat: 28.6, lng: 77.19 },
   seatCapacity: 4,
   committedStops: [stop("s1", "pA", "PICKUP", 4), stop("s2", "pA", "DROP", 15)],
-  passengersById: new Map([["pA", passenger("pA", 5, 8)]]),
+  passengersById: new Map([["pA", passenger("pA", 5, 50)]]),
+  dropBudgetMinByStopId: new Map([["s2", 5.5]]),
   request,
   newPassengerSoftDeadlineMin: 8,
   softDeadlineCostPerHour: 50,
@@ -72,12 +73,11 @@ describe("buildOptimizeToursRequest", () => {
     expect(fresh.softDeadlineCostPerHour).toBe(50);
   });
 
-  it("derives hard deadlines from promise, travel floor, and passenger budget", () => {
+  it("derives hard deadlines from promise, travel floor, and computed drop budget", () => {
     const built = buildOptimizeToursRequest(baseInput);
     const committed = built.shipments.find((shipment) => shipment.passengerId === "pA")!;
-    // Floored by slack'd travel when that exceeds originalEtaMin; then + budget.
     expect(committed.pickupDeadlineMin).toBeGreaterThanOrEqual(9);
-    expect(committed.dropDeadlineMin).toBeGreaterThanOrEqual(23);
+    expect(committed.dropDeadlineMin).toBeGreaterThanOrEqual(20.5);
     expect(committed.dropDeadlineMin! - committed.pickupDeadlineMin!).toBeGreaterThanOrEqual(0);
   });
 
@@ -97,9 +97,6 @@ describe("buildOptimizeToursRequest", () => {
   });
 
   it("never emits two shipments with the same id (Google rejects double pickups)", () => {
-    // If the sketch reuses a passenger already on the ride, the builder must
-    // not invent a second ship_* row — OptimizeTours then fails with
-    // "Shipment #N is picked up more than once" on injected_first_solution_routes.
     expect(() =>
       buildOptimizeToursRequest({
         ...baseInput,
@@ -112,14 +109,11 @@ describe("buildOptimizeToursRequest", () => {
     const built = buildOptimizeToursRequest({
       ...baseInput,
       committedStops: [stop("s2", "pA", "DROP", 15)],
-      passengersById: new Map([["pA", { ...passenger("pA", 5, 8), state: "IN_RIDE" as const }]]),
+      passengersById: new Map([["pA", { ...passenger("pA", 5, 50), state: "IN_RIDE" as const }]]),
+      dropBudgetMinByStopId: new Map([["s2", 7.5]]),
     });
 
     const committed = built.shipments.find((shipment) => shipment.passengerId === "pA")!;
-    // A fake pickup at vehicle start makes this a pickup-delivery shipment.
-    // OptimizeTours then rejects injected_first_solution_routes that only
-    // contain the remaining drop: "shipment #N has its delivery performed,
-    // but not its pickup". Delivery-only means pre-loaded.
     expect(committed.pickup).toBeUndefined();
     expect(committed.pickupDeadlineMin).toBeUndefined();
     expect(built.lockedVisits).toEqual([]);
@@ -134,8 +128,12 @@ describe("buildOptimizeToursRequest", () => {
         stop("sDropB", "pB", "DROP", 22),
       ],
       passengersById: new Map([
-        ["pA", { ...passenger("pA", 5, 8), state: "IN_RIDE" as const }],
-        ["pB", passenger("pB", 5, 8)],
+        ["pA", { ...passenger("pA", 5, 50), state: "IN_RIDE" as const }],
+        ["pB", passenger("pB", 5, 50)],
+      ]),
+      dropBudgetMinByStopId: new Map([
+        ["sDropA", 5],
+        ["sDropB", 4],
       ]),
     });
 
@@ -154,8 +152,12 @@ describe("buildOptimizeToursRequest", () => {
         stop("sDropB", "pB", "DROP", 22),
       ],
       passengersById: new Map([
-        ["pA", { ...passenger("pA", 5, 8), state: "IN_RIDE" as const }],
-        ["pB", { ...passenger("pB", 5, 8), state: "IN_RIDE" as const }],
+        ["pA", { ...passenger("pA", 5, 50), state: "IN_RIDE" as const }],
+        ["pB", { ...passenger("pB", 5, 50), state: "IN_RIDE" as const }],
+      ]),
+      dropBudgetMinByStopId: new Map([
+        ["sDropA", 5],
+        ["sDropB", 11],
       ]),
     });
 
@@ -169,12 +171,11 @@ describe("buildOptimizeToursRequest", () => {
     const built = buildOptimizeToursRequest({
       ...baseInput,
       committedStops: [farDrop],
-      passengersById: new Map([["pA", { ...passenger("pA", 5, 8), state: "IN_RIDE" as const }]]),
+      passengersById: new Map([["pA", { ...passenger("pA", 5, 50), state: "IN_RIDE" as const }]]),
+      dropBudgetMinByStopId: new Map([["s2", 8]]),
     });
 
     const committed = built.shipments.find((shipment) => shipment.passengerId === "pA")!;
-    // originalEtaMin is 0 and budget is 8 — without the travel floor the hard
-    // window would be 8 min and Google would reject after road times land.
     expect(committed.dropDeadlineMin).toBeGreaterThan(8);
   });
 

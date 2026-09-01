@@ -15,7 +15,7 @@ function passenger(id: string, state: Passenger["state"]): Passenger {
     specialRequirements: [],
     allowsPooling: true,
     maxPickupDelayMin: 5,
-    maxDropDelayMin: 8,
+    maxDropDelayPercent: 8,
   };
 }
 

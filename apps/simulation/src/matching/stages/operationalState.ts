@@ -1,5 +1,10 @@
-import type { Passenger } from "@/domain/entities";
+import type { Passenger, Stop } from "@/domain/entities";
 
+import {
+  delayBudgetMinFromPercent,
+  resolveDelayPercent,
+  soloEtaMinForStop,
+} from "../delayBudget";
 import { reason } from "../reasons";
 import type { DriverVerdict, MatchingContext, MatchingStage, StageOutcome } from "../types";
 
@@ -9,6 +14,10 @@ export interface StopDelayBudget {
   passengerId: string;
   type: "PICKUP" | "DROP";
   originalEtaMin: number;
+  /** Solo trip ETA the percent is measured against. */
+  soloEtaMin: number;
+  /** Percent of solo ETA that was applied (250% on short trips). */
+  budgetPercent: number;
   budgetMin: number;
 }
 
@@ -28,6 +37,7 @@ export const operationalStateStage: MatchingStage = {
   description: "Computes each committed passenger's remaining delay budget.",
 
   execute(context: MatchingContext): Promise<StageOutcome> {
+    const { settings } = context;
     const passengersById = new Map<string, Passenger>(
       context.scenario.passengers.map((passenger) => [passenger.id, passenger]),
     );
@@ -37,9 +47,10 @@ export const operationalStateStage: MatchingStage = {
 
     for (const driverId of context.liveDriverIds) {
       const ride = context.getRideForDriver(driverId);
+      const rideStops: Stop[] = ride?.stops ?? [];
       const budgets: StopDelayBudget[] = [];
 
-      for (const stop of ride?.stops ?? []) {
+      for (const stop of rideStops) {
         const passenger = passengersById.get(stop.passengerId);
         if (!passenger || passenger.state === "DROPPED" || passenger.state === "CANCELLED") {
           continue;
@@ -54,19 +65,48 @@ export const operationalStateStage: MatchingStage = {
           continue;
         }
 
-        budgets.push({
-          stopId: stop.id,
-          passengerId: stop.passengerId,
-          type: stop.type,
-          originalEtaMin: stop.originalEtaMin,
-          budgetMin:
-            stop.type === "PICKUP" ? passenger.maxPickupDelayMin : passenger.maxDropDelayMin,
-        });
+        const soloEtaMin = soloEtaMinForStop(stop, rideStops);
+        const personalDropBudgetMin = delayBudgetMinFromPercent(
+          soloEtaMin,
+          passenger.maxDropDelayPercent,
+          settings,
+        );
+        const globalDropBudgetMin = delayBudgetMinFromPercent(
+          soloEtaMin,
+          settings.maxExistingPassengerDelayPercent,
+          settings,
+        );
+        const effectiveDropBudgetMin = Math.min(personalDropBudgetMin, globalDropBudgetMin);
+        const effectiveDropPercent = Math.min(
+          resolveDelayPercent(soloEtaMin, passenger.maxDropDelayPercent, settings),
+          resolveDelayPercent(soloEtaMin, settings.maxExistingPassengerDelayPercent, settings),
+        );
+
+        const budget =
+          stop.type === "PICKUP"
+            ? {
+                stopId: stop.id,
+                passengerId: stop.passengerId,
+                type: stop.type,
+                originalEtaMin: stop.originalEtaMin,
+                soloEtaMin,
+                budgetPercent: 0,
+                budgetMin: passenger.maxPickupDelayMin,
+              }
+            : {
+                stopId: stop.id,
+                passengerId: stop.passengerId,
+                type: stop.type,
+                originalEtaMin: stop.originalEtaMin,
+                soloEtaMin,
+                budgetPercent: effectiveDropPercent,
+                budgetMin: effectiveDropBudgetMin,
+              };
+
+        budgets.push(budget);
       }
 
       budgetsByDriver[driverId] = budgets;
-      // The note is for the UI; the context channel is for stages 6 and 10,
-      // which cannot reach another stage's notes.
       context.setDelayBudgets(driverId, budgets);
 
       const tightest = budgets.reduce<number | undefined>(
@@ -79,9 +119,6 @@ export const operationalStateStage: MatchingStage = {
         ...(tightest === undefined ? {} : { tightestDelayBudgetMin: tightest }),
       });
 
-      // An idle driver has no commitments to protect, so there is nothing
-      // rigid about them. Only a driver whose every promise is already at zero
-      // slack is a genuine dead end.
       if (budgets.length > 0 && budgets.every((budget) => budget.budgetMin <= 0)) {
         verdicts.push({
           driverId,

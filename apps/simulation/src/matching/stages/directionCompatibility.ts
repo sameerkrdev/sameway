@@ -15,17 +15,18 @@ import type { DriverVerdict, MatchingContext, MatchingStage, StageOutcome } from
  * A pickup can sit perfectly on the corridor while the destination drags the
  * vehicle somewhere else entirely. Three cheap geometric signals catch that
  * before a solver call is spent: which way the trip is heading, whether the
- * destination is anywhere near the corridor, and whether it is ahead of the
- * vehicle or behind it.
+ * destination is ahead of the vehicle or behind it. Off-corridor drops are not
+ * rejected here — later delay and duration budgets decide whether the detour is
+ * acceptable for everyone on board.
  *
- * All three are approximations — roads are not straight lines, so a moderate
+ * Both checks are approximations — roads are not straight lines, so a moderate
  * bearing difference is not proof of anything. The thresholds are deliberately
  * loose; this stage is here to catch the obviously wrong, not to be clever.
  */
 export const directionCompatibilityStage: MatchingStage = {
   id: "directionCompatibility",
   name: "Direction Compatibility",
-  description: "Bearing, destination proximity and destination progress along the route.",
+  description: "Bearing and destination progress along the route.",
 
   execute(context: MatchingContext): Promise<StageOutcome> {
     const { request, settings } = context;
@@ -78,7 +79,6 @@ export const directionCompatibilityStage: MatchingStage = {
         dropClass,
         pickupProgressKm,
         maxBearingDifferenceDeg: settings.maxBearingDifferenceDeg,
-        maxDropToRouteDistanceKm: settings.maxDropToRouteDistanceKm,
       });
 
       if (failure) {
@@ -108,24 +108,11 @@ function firstDirectionFailure(args: {
   dropClass: ReturnType<typeof classifyDropRelativeToRoute>;
   pickupProgressKm: number;
   maxBearingDifferenceDeg: number;
-  maxDropToRouteDistanceKm: number;
 }): MatchReason | undefined {
   if (args.difference > args.maxBearingDifferenceDeg) {
     return reason("BEARING_INCOMPATIBLE", "Request heads in a different direction to this route", {
       value: round(args.difference, 1),
       threshold: args.maxBearingDifferenceDeg,
-    });
-  }
-
-  // Forward extension on the same corridor uses lateral offset, not distance-to-endpoint.
-  const offCorridorKm = args.dropClass.isAheadExtension
-    ? args.dropClass.lateralKm
-    : args.dropClass.perpendicularKm;
-
-  if (offCorridorKm > args.maxDropToRouteDistanceKm) {
-    return reason("DESTINATION_OFF_CORRIDOR", "Destination sits well off this route's corridor", {
-      value: round(offCorridorKm, 2),
-      threshold: args.maxDropToRouteDistanceKm,
     });
   }
 

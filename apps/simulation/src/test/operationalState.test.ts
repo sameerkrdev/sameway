@@ -12,7 +12,7 @@ describe("operationalState", () => {
         { id: "s1", passengerId: "pA", type: "PICKUP", originalEtaMin: 4 },
         { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 15 },
       ],
-      passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 5, maxDropDelayMin: 8 }],
+      passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 5, maxDropDelayPercent: 50 }],
     });
 
     const outcome = await operationalStateStage.execute(context);
@@ -21,23 +21,45 @@ describe("operationalState", () => {
     expect(budgets).toHaveLength(2);
   });
 
-  it("uses the pickup budget for a pickup and the drop budget for a drop", async () => {
+  it("uses pickup minutes and a drop percent of solo trip ETA", async () => {
     const context = makeContext({
       driverId: "d1",
       committedStops: [
         { id: "s1", passengerId: "pA", type: "PICKUP", originalEtaMin: 4 },
         { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 15 },
       ],
-      passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 5, maxDropDelayMin: 8 }],
+      passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 5, maxDropDelayPercent: 50 }],
     });
 
     const outcome = await operationalStateStage.execute(context);
     const budgets = (
-      outcome.notes?.budgetsByDriver as Record<string, { stopId: string; budgetMin: number }[]>
+      outcome.notes?.budgetsByDriver as Record<
+        string,
+        { stopId: string; budgetMin: number; soloEtaMin: number }[]
+      >
     ).d1!;
 
     expect(budgets.find((entry) => entry.stopId === "s1")!.budgetMin).toBe(5);
-    expect(budgets.find((entry) => entry.stopId === "s2")!.budgetMin).toBe(8);
+    expect(budgets.find((entry) => entry.stopId === "s2")!.soloEtaMin).toBe(11);
+    expect(budgets.find((entry) => entry.stopId === "s2")!.budgetMin).toBe(5.5);
+  });
+
+  it("applies 250% on short solo trips", async () => {
+    const context = makeContext({
+      driverId: "d1",
+      committedStops: [
+        { id: "s1", passengerId: "pA", type: "PICKUP", originalEtaMin: 2 },
+        { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 6 },
+      ],
+      passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 5, maxDropDelayPercent: 50 }],
+    });
+
+    const outcome = await operationalStateStage.execute(context);
+    const dropBudget = (
+      outcome.notes?.budgetsByDriver as Record<string, { stopId: string; budgetMin: number }[]>
+    ).d1!.find((entry) => entry.stopId === "s2")!;
+
+    expect(dropBudget.budgetMin).toBe(10);
   });
 
   it("passes an idle driver with no committed stops", async () => {
@@ -56,8 +78,8 @@ describe("operationalState", () => {
         { id: "s2", passengerId: "pB", type: "DROP", originalEtaMin: 20 },
       ],
       passengers: [
-        { id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayMin: 3 },
-        { id: "pB", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayMin: 12 },
+        { id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayPercent: 30 },
+        { id: "pB", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayPercent: 60 },
       ],
     });
 
@@ -70,7 +92,7 @@ describe("operationalState", () => {
     const context = makeContext({
       driverId: "d1",
       committedStops: [{ id: "s1", passengerId: "pA", type: "DROP", originalEtaMin: 10 }],
-      passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 0, maxDropDelayMin: 0 }],
+      passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 0, maxDropDelayPercent: 0 }],
     });
 
     const outcome = await operationalStateStage.execute(context);

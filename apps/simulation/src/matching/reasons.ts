@@ -122,11 +122,6 @@ export const REASONS = {
   // Direction (stage 4) -----------------------------------------------------
   DIRECTION_COMPATIBLE: { category: "DIRECTION", label: "Direction compatible", outcome: "PASS" },
   BEARING_INCOMPATIBLE: { category: "DIRECTION", label: "Wrong direction", outcome: "FAIL" },
-  DESTINATION_OFF_CORRIDOR: {
-    category: "DIRECTION",
-    label: "Destination off corridor",
-    outcome: "FAIL",
-  },
   DESTINATION_BEHIND_VEHICLE: {
     category: "DIRECTION",
     label: "Destination behind vehicle",

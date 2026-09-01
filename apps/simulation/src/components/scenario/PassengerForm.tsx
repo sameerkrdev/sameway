@@ -16,7 +16,7 @@ import { PASSENGER_STATES, type Passenger } from "@/domain/entities";
 import { DEFAULT_PASSENGER_DELAY_BUDGETS } from "@/domain/settings";
 import { newPassengerId, useScenarioStore } from "@/stores/scenarioStore";
 
-import { ToggleRow } from "./VehicleForm";
+import { NumberField, ToggleRow } from "./VehicleForm";
 
 export function PassengerForm() {
   const scenario = useScenarioStore((state) => state.scenario);
@@ -94,6 +94,21 @@ function PassengerRow({
         >
           <Trash2 />
         </Button>
+      </div>
+
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <NumberField
+          label="Max pickup delay (min)"
+          value={passenger.maxPickupDelayMin}
+          min={0}
+          onChange={(maxPickupDelayMin) => onChange({ ...passenger, maxPickupDelayMin })}
+        />
+        <NumberField
+          label="Max drop delay (%)"
+          value={passenger.maxDropDelayPercent}
+          min={0}
+          onChange={(maxDropDelayPercent) => onChange({ ...passenger, maxDropDelayPercent })}
+        />
       </div>
 
       <div className="mt-2 grid grid-cols-2 gap-2">

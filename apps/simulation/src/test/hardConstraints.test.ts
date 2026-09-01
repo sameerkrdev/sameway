@@ -18,7 +18,7 @@ const pooled: MakeContextInput = {
     { id: "s1", passengerId: "pA", type: "PICKUP", originalEtaMin: 3, lat: 28.6, lng: 77.22 },
     { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 25, lat: 28.6, lng: 77.34 },
   ],
-  passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 30, maxDropDelayMin: 30 }],
+  passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 30, maxDropDelayPercent: 10_000 }],
   request: { pickup: { lat: 28.6, lng: 77.26 }, drop: { lat: 28.6, lng: 77.31 } },
 };
 
@@ -48,9 +48,7 @@ class DeadlineBlindOptimizerEngine implements OptimizerEngine {
 
 /** Wide enough that only the limit under test can be the one that fires. */
 const permissive = {
-  maxCorridorExtensionKm: 10000,
-  maxAdditionalDurationMin: 10000,
-  maxExistingPassengerDelayMin: 10000,
+  maxExistingPassengerDelayPercent: 10_000,
   maxNewPassengerPickupDelayMin: 10000,
   maxNewPassengerRideDetourMin: 10000,
 };
@@ -61,7 +59,7 @@ const eastboundExtension: MakeContextInput = {
   committedStops: [
     { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 30, lat: 28.6, lng: 77.4 },
   ],
-  passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 30, maxDropDelayMin: 30 }],
+  passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 30, maxDropDelayPercent: 10_000 }],
   request: { pickup: { lat: 28.6, lng: 77.25 }, drop: { lat: 28.6, lng: 77.5 } },
 };
 
@@ -86,29 +84,15 @@ describe("hardConstraints", () => {
     expect(outcome.verdicts[0]!.status).toBe("PASSED");
   });
 
-  it("passes a same-direction corridor extension under the extension cap", async () => {
+  it("passes a same-direction corridor extension", async () => {
     const context = await runToIncrementalCost({
       ...eastboundExtension,
-      settings: { ...permissive, maxCorridorExtensionKm: 15 },
+      settings: permissive,
     });
     const outcome = await hardConstraintsStage.execute(context);
 
     expect(outcome.verdicts[0]!.status).toBe("PASSED");
     expect((context.getMetrics("d1").corridorExtensionKm ?? 0)).toBeGreaterThan(5);
-  });
-
-  it("rejects a corridor extension that exceeds maxCorridorExtensionKm", async () => {
-    const context = await runToIncrementalCost({
-      ...eastboundExtension,
-      settings: { ...permissive, maxCorridorExtensionKm: 1 },
-    });
-    context.recordMetrics("d1", {
-      corridorExtensionKm: 10,
-      additionalDistanceKm: 10,
-    });
-    const outcome = await hardConstraintsStage.execute(context);
-
-    expect(outcome.verdicts[0]!.reasons[0]!.code).toBe("CORRIDOR_EXTENSION_TOO_LONG");
   });
 
   it("rejects on an existing passenger's own budget, not the global ceiling", async () => {
@@ -119,7 +103,7 @@ describe("hardConstraints", () => {
     // breaching a promise is exactly what stage 10 is a backstop against.
     const context = await runToIncrementalCost({
       ...pooled,
-      passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 0, maxDropDelayMin: 0 }],
+      passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 0, maxDropDelayPercent: 0 }],
       settings: permissive,
       optimizer: new DeadlineBlindOptimizerEngine(),
     });

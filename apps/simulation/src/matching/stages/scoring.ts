@@ -18,9 +18,11 @@ import type {
  * why this scoring stays in-house rather than being delegated to the solver,
  * whose objective is the vehicle's cost and nobody else's.
  *
- * Every component measures harm and is normalised against its own stage-10
- * threshold, so the total stays on one 0-100 scale and each contribution is a
- * real displayable number rather than an artefact of unit choice.
+ * Every component measures harm and is normalised against its own threshold,
+ * so the total stays on one 0-100 scale and each contribution is a real
+ * displayable number rather than an artefact of unit choice. Driver impact
+ * uses `maxNewPassengerRideDetourMin`; existing rider impact uses the
+ * tightest computed drop-delay budget from stage 9.
  *
  * Known limitation: `OptimizeTours` returns one sequence per driver, so this
  * ranks *across drivers*, not across sequences for a single driver. The
@@ -48,13 +50,19 @@ export const scoringStage: MatchingStage = {
       // length of the trip they were offered, which is backwards. Stages 7 and
       // 10 already exempt them for the same reason.
       const driverImpactMin = isIdle ? 0 : (metrics.additionalDurationMin ?? 0);
+      const existingDelayBudgetMin =
+        metrics.maximumExistingPassengerDelayBudgetMin ??
+        settings.maxNewPassengerRideDetourMin;
 
       const components: ScoreComponent[] = [
         {
           key: "driverImpact",
           label: "Driver impact",
           rawValue: driverImpactMin,
-          normalized: normalizeLowerIsBetter(driverImpactMin, settings.maxAdditionalDurationMin),
+          normalized: normalizeLowerIsBetter(
+            driverImpactMin,
+            settings.maxNewPassengerRideDetourMin,
+          ),
           weight: weights.driverImpact,
           contribution: 0,
         },
@@ -64,7 +72,7 @@ export const scoringStage: MatchingStage = {
           rawValue: metrics.maximumExistingPassengerDelayMin,
           normalized: normalizeLowerIsBetter(
             metrics.maximumExistingPassengerDelayMin ?? 0,
-            settings.maxExistingPassengerDelayMin,
+            existingDelayBudgetMin,
           ),
           weight: weights.existingPassengerImpact,
           contribution: 0,

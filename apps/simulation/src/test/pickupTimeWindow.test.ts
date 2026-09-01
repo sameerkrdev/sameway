@@ -22,7 +22,8 @@ const waitingRider: MakeContextInput = {
     { id: "s1", passengerId: "pA", type: "PICKUP", originalEtaMin: 4, lat: 28.6, lng: 77.24 },
     { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 20, lat: 28.6, lng: 77.34 },
   ],
-  passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 20, maxDropDelayMin: 20 }],
+  passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 20, maxDropDelayPercent: 150 }],
+  settings: { maxExistingPassengerDelayPercent: 200 },
   request: { pickup: { lat: 28.6, lng: 77.22 }, drop: { lat: 28.6, lng: 77.3 } },
 };
 
@@ -38,7 +39,7 @@ describe("pickupTimeWindow", () => {
     const generous = await run(waitingRider);
     const strict = await run({
       ...waitingRider,
-      passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 0, maxDropDelayMin: 0 }],
+      passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 0, maxDropDelayPercent: 0 }],
     });
 
     expect(strict.context.getSequences("d1").length).toBeLessThan(
@@ -49,7 +50,7 @@ describe("pickupTimeWindow", () => {
   it("rejects the driver only when every ordering breaches a budget", async () => {
     const { outcome } = await run({
       ...waitingRider,
-      passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 0, maxDropDelayMin: 0 }],
+      passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 0, maxDropDelayPercent: 0 }],
       request: {
         pickup: { lat: 28.7, lng: 77.22 },
         drop: { lat: 28.7, lng: 77.3 },

@@ -24,7 +24,7 @@ const onRoute: MakeContextInput = {
   committedStops: [
     { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 25, lat: 28.6, lng: 77.35 },
   ],
-  passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayMin: 20 }],
+  passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayPercent: 20 }],
   request: { pickup: { lat: 28.6, lng: 77.25 }, drop: { lat: 28.6, lng: 77.32 } },
 };
 
@@ -36,47 +36,27 @@ describe("detourLowerBound", () => {
     expect(context.getMetrics("d1").lowerBoundAdditionalKm).toBeLessThan(1);
   });
 
-  it("rejects a corridor extension when the lower bound exceeds the extension cap", async () => {
+  it("does not reject a long corridor extension on straight-line distance alone", async () => {
     const { outcome } = await run({
       driverId: "d1",
       driverLocation: { lat: 28.6, lng: 77.2 },
       committedStops: [
         { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 25, lat: 28.6, lng: 77.35 },
       ],
-      passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayMin: 20 }],
+      passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayPercent: 20 }],
       request: { pickup: { lat: 28.6, lng: 77.25 }, drop: { lat: 28.6, lng: 77.55 } },
-      settings: { maxCorridorExtensionKm: 3 },
     });
 
-    expect(outcome.verdicts[0]!.status).toBe("FAILED");
-    expect(outcome.verdicts[0]!.reasons[0]!.code).toBe("DETOUR_LOWER_BOUND_EXCEEDED");
-  });
-
-  it("reports the bound and the threshold on the rejection", async () => {
-    const { outcome } = await run({
-      driverId: "d1",
-      driverLocation: { lat: 28.6, lng: 77.2 },
-      committedStops: [
-        { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 25, lat: 28.6, lng: 77.35 },
-      ],
-      passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayMin: 20 }],
-      request: { pickup: { lat: 28.6, lng: 77.25 }, drop: { lat: 28.6, lng: 77.55 } },
-      settings: { maxCorridorExtensionKm: 3 },
-    });
-
-    const rejection = outcome.verdicts[0]!.reasons[0]!;
-    expect(rejection.threshold).toBe(3);
-    expect(Number(rejection.value)).toBeGreaterThan(3);
+    expect(outcome.verdicts[0]!.status).toBe("PASSED");
+    expect(outcome.verdicts[0]!.reasons[0]!.code).toBe("LOWER_BOUND_OK");
   });
 
   it("does not reject ordinary off-corridor pooling on added distance alone", async () => {
     const { outcome } = await run({
       ...onRoute,
       request: { pickup: { lat: 28.9, lng: 77.25 }, drop: { lat: 28.95, lng: 77.32 } },
-      settings: { maxCorridorExtensionKm: 1 },
     });
 
-    // Without corridor extension, stage 7 only shortlists — it does not fail.
     expect(outcome.verdicts[0]!.status).toBe("PASSED");
   });
 
@@ -91,8 +71,8 @@ describe("detourLowerBound", () => {
         { id: "s4", passengerId: "pB", type: "DROP", originalEtaMin: 24, lat: 28.6, lng: 77.34 },
       ],
       passengers: [
-        { id: "pA", state: "WAITING", maxPickupDelayMin: 30, maxDropDelayMin: 30 },
-        { id: "pB", state: "WAITING", maxPickupDelayMin: 30, maxDropDelayMin: 30 },
+        { id: "pA", state: "WAITING", maxPickupDelayMin: 30, maxDropDelayPercent: 30 },
+        { id: "pB", state: "WAITING", maxPickupDelayMin: 30, maxDropDelayPercent: 30 },
       ],
       vehicle: { totalSeats: 6 },
       settings: { maxRoutedInsertionsPerDriver: 3 },
@@ -131,21 +111,6 @@ describe("detourLowerBound", () => {
       expect(boundAddedKm).toBeLessThanOrEqual(roadAddedKm + 1e-9);
     }
   });
-
-  it("passes a corridor extension when the lower bound is under maxCorridorExtensionKm", async () => {
-    const { outcome } = await run({
-      driverId: "d1",
-      driverLocation: { lat: 28.6, lng: 77.2 },
-      committedStops: [
-        { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 25, lat: 28.6, lng: 77.35 },
-      ],
-      passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayMin: 20 }],
-      request: { pickup: { lat: 28.6, lng: 77.25 }, drop: { lat: 28.6, lng: 77.45 } },
-      settings: { maxCorridorExtensionKm: 15 },
-    });
-
-    expect(outcome.verdicts[0]!.status).toBe("PASSED");
-  });
 });
 
 describe("detourLowerBound and idle drivers", () => {
@@ -156,7 +121,6 @@ describe("detourLowerBound and idle drivers", () => {
       committedStops: [],
       passengers: [],
       request: { pickup: { lat: 28.6, lng: 77.21 }, drop: { lat: 28.6, lng: 77.6 } },
-      settings: { maxCorridorExtensionKm: 5 },
     });
 
     expect(outcome.verdicts[0]!.status).toBe("PASSED");

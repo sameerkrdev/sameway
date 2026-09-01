@@ -19,7 +19,7 @@ const eastbound: MakeContextInput = {
   committedStops: [
     { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 30, lat: 28.6, lng: 77.4 },
   ],
-  passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayMin: 8 }],
+  passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayPercent: 8 }],
 };
 
 describe("directionCompatibility", () => {
@@ -44,15 +44,15 @@ describe("directionCompatibility", () => {
     expect(outcome.verdicts[0]!.reasons[0]!.code).toBe("BEARING_INCOMPATIBLE");
   });
 
-  it("rejects a destination far off the corridor", async () => {
+  it("passes a destination far off the corridor when bearing and progress allow", async () => {
     const { outcome } = await run({
       ...eastbound,
       request: { pickup: { lat: 28.6, lng: 77.25 }, drop: { lat: 28.9, lng: 77.31 } },
-      settings: { maxBearingDifferenceDeg: 180, maxDropToRouteDistanceKm: 3 },
+      settings: { maxBearingDifferenceDeg: 180 },
     });
 
-    expect(outcome.verdicts[0]!.status).toBe("FAILED");
-    expect(outcome.verdicts[0]!.reasons[0]!.code).toBe("DESTINATION_OFF_CORRIDOR");
+    expect(outcome.verdicts[0]!.status).toBe("PASSED");
+    expect(outcome.verdicts[0]!.reasons[0]!.code).toBe("DIRECTION_COMPATIBLE");
   });
 
   it("rejects a destination behind the vehicle even when it is close to the line", async () => {
@@ -60,7 +60,7 @@ describe("directionCompatibility", () => {
       ...eastbound,
       driverLocation: { lat: 28.6, lng: 77.3 },
       request: { pickup: { lat: 28.6, lng: 77.32 }, drop: { lat: 28.6, lng: 77.28 } },
-      settings: { maxBearingDifferenceDeg: 180, maxDropToRouteDistanceKm: 10 },
+      settings: { maxBearingDifferenceDeg: 180 },
     });
 
     expect(outcome.verdicts[0]!.status).toBe("FAILED");
@@ -83,14 +83,14 @@ describe("directionCompatibility", () => {
     const { outcome, context } = await run({
       ...eastbound,
       request: { pickup: { lat: 28.6, lng: 77.25 }, drop: { lat: 28.6, lng: 77.5 } },
-      settings: { maxBearingDifferenceDeg: 75, maxDropToRouteDistanceKm: 3 },
+      settings: { maxBearingDifferenceDeg: 75 },
     });
 
     expect(outcome.verdicts[0]!.status).toBe("PASSED");
     expect(context.getMetrics("d1").corridorExtensionKm).toBeGreaterThan(5);
   });
 
-  it("records all three signals as metrics", async () => {
+  it("records direction signals as metrics", async () => {
     const { context } = await run({
       ...eastbound,
       request: { pickup: { lat: 28.6, lng: 77.25 }, drop: { lat: 28.6, lng: 77.35 } },

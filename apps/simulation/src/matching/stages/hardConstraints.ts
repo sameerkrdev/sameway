@@ -13,9 +13,8 @@ import type { DriverVerdict, MatchingContext, MatchingStage, StageOutcome } from
  * separate binary stage rather than as a penalty term in the score.
  *
  * These checks are kept even though the solver enforced the time windows
- * itself. The solver was never told about the driver's extra-distance cap or
- * our pooling policy, and an independent re-check is what makes the answer
- * trustworthy rather than merely plausible.
+ * itself. The solver was never told about our pooling policy, and an independent
+ * re-check is what makes the answer trustworthy rather than merely plausible.
  */
 export const hardConstraintsStage: MatchingStage = {
   id: "hardConstraints",
@@ -60,25 +59,8 @@ function firstThresholdBreach(
   const metrics = context.getMetrics(driverId);
   const corridor = context.getCorridor(driverId);
   const hasExistingRoute = (corridor?.remainingStops.length ?? 0) > 0;
-  const isCorridorExtension = (metrics.corridorExtensionKm ?? 0) > 0;
 
   if (hasExistingRoute) {
-    const additionalKm = metrics.additionalDistanceKm ?? 0;
-
-    if (isCorridorExtension && additionalKm > settings.maxCorridorExtensionKm) {
-      return reason("CORRIDOR_EXTENSION_TOO_LONG", "Same-direction extension adds too much distance", {
-        value: metrics.additionalDistanceKm,
-        threshold: settings.maxCorridorExtensionKm,
-      });
-    }
-
-    if ((metrics.additionalDurationMin ?? 0) > settings.maxAdditionalDurationMin) {
-      return reason("ADDITIONAL_DURATION_TOO_HIGH", "Insertion adds too much travel time", {
-        value: metrics.additionalDurationMin,
-        threshold: settings.maxAdditionalDurationMin,
-      });
-    }
-
     const budgetBreach = firstBudgetBreach(driverId, context);
     if (budgetBreach) {
       return budgetBreach;
@@ -141,16 +123,6 @@ function firstBudgetBreach(driverId: string, context: MatchingContext): MatchRea
         { value: round(delayMin, 2), threshold: budget.budgetMin },
       );
     }
-  }
-
-  const worst = context.getMetrics(driverId).maximumExistingPassengerDelayMin ?? 0;
-
-  if (worst > context.settings.maxExistingPassengerDelayMin) {
-    return reason(
-      "EXISTING_PASSENGER_DELAY_TOO_HIGH",
-      "An existing passenger would arrive too much later than promised",
-      { value: worst, threshold: context.settings.maxExistingPassengerDelayMin },
-    );
   }
 
   return undefined;

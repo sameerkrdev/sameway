@@ -38,7 +38,7 @@ export interface StubPassenger {
   id: string;
   state: Passenger["state"];
   maxPickupDelayMin: number;
-  maxDropDelayMin: number;
+  maxDropDelayPercent?: number;
   seatsRequired?: number;
   allowsPooling?: boolean;
 }
@@ -84,7 +84,7 @@ export function makeContext(input: MakeContextInput): MatchingContext & {
     specialRequirements: [],
     allowsPooling: stub.allowsPooling ?? true,
     maxPickupDelayMin: stub.maxPickupDelayMin,
-    maxDropDelayMin: stub.maxDropDelayMin,
+    maxDropDelayPercent: stub.maxDropDelayPercent ?? 50,
   }));
 
   const stops: Stop[] = input.committedStops.map((stub, index) => ({
@@ -117,7 +117,7 @@ export function makeContext(input: MakeContextInput): MatchingContext & {
     specialRequirements: [],
     allowsPooling: true,
     maxPickupDelayMin: 6,
-    maxDropDelayMin: 10,
+    maxDropDelayPercent: 50,
   };
 
   const request: RideRequest = {

@@ -124,13 +124,12 @@ describe("scenario schema v2", () => {
     const passenger = result.scenario.passengers[0]!;
     // Budgets come from the v1 document's own settings fields, not today's defaults.
     expect(passenger.maxPickupDelayMin).toBe(V1_SETTINGS.maxNewPassengerPickupDelayMin);
-    expect(passenger.maxDropDelayMin).toBe(V1_SETTINGS.maxExistingPassengerDelayMin);
+    expect(passenger.maxDropDelayPercent).toBe(50);
     expect(result.scenario.settings.maxNewPassengerPickupDelayMin).toBe(
       V1_SETTINGS.maxNewPassengerPickupDelayMin,
     );
-    expect(result.scenario.settings.maxExistingPassengerDelayMin).toBe(
-      V1_SETTINGS.maxExistingPassengerDelayMin,
-    );
+    expect(result.scenario.settings.maxExistingPassengerDelayPercent).toBe(50);
+    expect(result.scenario.settings.shortTripDelayPercent).toBe(250);
     expect("maxDetourPercent" in result.scenario.settings).toBe(false);
     expect("maxAdditionalDistanceKm" in result.scenario.settings).toBe(false);
   });

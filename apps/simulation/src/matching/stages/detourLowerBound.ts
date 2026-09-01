@@ -10,19 +10,17 @@ import type {
 } from "../types";
 
 /**
- * Stage 7. Is this provably too expensive, using only free arithmetic?
+ * Stage 7. Rank insertion candidates by straight-line cost and shortlist the
+ * cheapest for the solver.
  *
- * Road distance can never be shorter than straight-line distance, so the
- * straight-line added length is an admissible lower bound — the same principle
- * as an admissible heuristic in A*. For corridor extensions, if that bound
- * already exceeds `maxCorridorExtensionKm`, a solver call would only confirm
- * the reject expensively. Ordinary pooling no longer has an added-km cap, so
- * this stage only ranks and shortlists candidates for stage 8.
+ * Road distance can never be shorter than straight-line distance, so added
+ * length is a useful sort key. There is no hard reject here — passenger delay
+ * and ride-detour budgets in stage 11 decide whether a match is acceptable.
  */
 export const detourLowerBoundStage: MatchingStage = {
   id: "detourLowerBound",
   name: "Detour Lower Bound",
-  description: "Prunes hopeless corridor extensions; shortlists cheapest sequences.",
+  description: "Shortlists cheapest stop sequences by straight-line added length.",
 
   execute(context: MatchingContext): Promise<StageOutcome> {
     const { settings } = context;
@@ -43,9 +41,6 @@ export const detourLowerBoundStage: MatchingStage = {
 
       const start = corridor.polyline[0]!;
       const baselineKm = pathLengthKm(corridor.polyline);
-      const metrics = context.getMetrics(driverId);
-      const isCorridorExtension = (metrics.corridorExtensionKm ?? 0) > 0;
-      const extensionCap = settings.maxCorridorExtensionKm;
 
       const scored = candidates.map((candidate) => ({
         candidate,
@@ -57,35 +52,14 @@ export const detourLowerBoundStage: MatchingStage = {
       const best = scored[0]!;
       context.recordMetrics(driverId, {
         lowerBoundAdditionalKm: round(best.addedKm, 2),
+        boundFeasibleSequences: scored.length,
       });
 
-      // Idle drivers: baseline is zero; "added" is the whole trip, not a detour.
-      if (!corridor.isIdle && isCorridorExtension && best.addedKm > extensionCap) {
-        verdicts.push({
-          driverId,
-          status: "FAILED",
-          reasons: [
-            reason(
-              "DETOUR_LOWER_BOUND_EXCEEDED",
-              "Even the straight-line lower bound exceeds the corridor-extension cap",
-              { value: round(best.addedKm, 2), threshold: extensionCap },
-            ),
-          ],
-        });
-        continue;
-      }
-
-      const withinBound =
-        !corridor.isIdle && isCorridorExtension
-          ? scored.filter((entry) => entry.addedKm <= extensionCap)
-          : scored;
-
-      const shortlisted: RouteInsertionCandidate[] = withinBound
+      const shortlisted: RouteInsertionCandidate[] = scored
         .slice(0, settings.maxRoutedInsertionsPerDriver)
         .map((entry) => entry.candidate);
 
       context.recordMetrics(driverId, {
-        boundFeasibleSequences: withinBound.length,
         shortlistedSequences: shortlisted.length,
       });
 
@@ -99,14 +73,9 @@ export const detourLowerBoundStage: MatchingStage = {
             ? reason("LOWER_BOUND_OK", "Driver is idle — the trip is not a detour", {
                 value: round(best.addedKm, 2),
               })
-            : isCorridorExtension
-              ? reason("LOWER_BOUND_OK", "Extension is within the corridor-extension cap", {
-                  value: round(best.addedKm, 2),
-                  threshold: extensionCap,
-                })
-              : reason("LOWER_BOUND_OK", "Sequences shortlisted by straight-line cost", {
-                  value: round(best.addedKm, 2),
-                }),
+            : reason("LOWER_BOUND_OK", "Sequences shortlisted by straight-line cost", {
+                value: round(best.addedKm, 2),
+              }),
         ],
       });
     }

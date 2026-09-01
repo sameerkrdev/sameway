@@ -77,6 +77,8 @@ export interface DriverMetrics {
   newPassengerPickupDelayMin?: number;
   newPassengerRideDetourMin?: number;
   maximumExistingPassengerDelayMin?: number;
+  /** Tightest drop delay budget that applied to the measured worst delay. */
+  maximumExistingPassengerDelayBudgetMin?: number;
 
   // Pooling
   existingPassengerCount?: number;
@@ -212,6 +214,8 @@ export interface RouteInsertionResult {
 
   existingPassengerDelays?: PassengerDelay[];
   maximumExistingPassengerDelayMin?: number;
+  /** Tightest drop delay budget that applied to the measured worst delay. */
+  maximumExistingPassengerDelayBudgetMin?: number;
 
   occupancyBySegment?: SegmentOccupancy[];
 

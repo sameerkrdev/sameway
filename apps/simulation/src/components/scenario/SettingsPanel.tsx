@@ -77,12 +77,6 @@ export function SettingsPanel() {
             onChange={(value) => set("maxPickupToRouteDistanceKm", value)}
           />
           <NumberField
-            label="Max drop → route (km)"
-            value={settings.maxDropToRouteDistanceKm}
-            min={0}
-            onChange={(value) => set("maxDropToRouteDistanceKm", value)}
-          />
-          <NumberField
             label="Max bearing difference (deg)"
             value={settings.maxBearingDifferenceDeg}
             min={0}
@@ -95,16 +89,22 @@ export function SettingsPanel() {
       <Section title="Route feasibility">
         <div className="grid grid-cols-2 gap-2">
           <NumberField
-            label="Max added duration (min)"
-            value={settings.maxAdditionalDurationMin}
+            label="Max existing drop delay (%)"
+            value={settings.maxExistingPassengerDelayPercent}
             min={0}
-            onChange={(value) => set("maxAdditionalDurationMin", value)}
+            onChange={(value) => set("maxExistingPassengerDelayPercent", value)}
           />
           <NumberField
-            label="Max existing rider delay (min)"
-            value={settings.maxExistingPassengerDelayMin}
+            label="Short-trip solo ETA max (min)"
+            value={settings.shortTripSoloEtaMaxMin}
             min={0}
-            onChange={(value) => set("maxExistingPassengerDelayMin", value)}
+            onChange={(value) => set("shortTripSoloEtaMaxMin", value)}
+          />
+          <NumberField
+            label="Short-trip drop delay (%)"
+            value={settings.shortTripDelayPercent}
+            min={0}
+            onChange={(value) => set("shortTripDelayPercent", value)}
           />
           <NumberField
             label="Max new pickup delay (min)"
@@ -119,12 +119,6 @@ export function SettingsPanel() {
             onChange={(value) => set("maxNewPassengerRideDetourMin", value)}
           />
           <NumberField
-            label="Max corridor extension (km)"
-            value={settings.maxCorridorExtensionKm}
-            min={0}
-            onChange={(value) => set("maxCorridorExtensionKm", value)}
-          />
-          <NumberField
             label="Max pooled passengers"
             value={settings.maxPooledPassengers}
             min={1}
@@ -132,7 +126,8 @@ export function SettingsPanel() {
           />
         </div>
         <p className="text-[11px] text-[var(--muted-foreground)]">
-          Feasibility is judged in minutes (and corridor-extension km), not detour percent.
+          Existing passenger drop delays are a percent of solo trip ETA. Trips at or below the
+          short-trip ETA use the higher short-trip percent (default 250%).
         </p>
       </Section>
 

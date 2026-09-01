@@ -3,7 +3,7 @@ import { z } from "zod";
 import { haversineKm } from "@/lib/geo";
 
 import { SCENARIO_SCHEMA_VERSION, type Scenario } from "./entities";
-import { DEFAULT_SETTINGS, DEFAULT_STAGE_ORDER } from "./settings";
+import { DEFAULT_SETTINGS, DEFAULT_STAGE_ORDER, DEFAULT_PASSENGER_DELAY_BUDGETS } from "./settings";
 
 const latLngSchema = z.object({
   lat: z.number().min(-90).max(90),
@@ -54,7 +54,7 @@ const passengerSchema = z.object({
   specialRequirements: z.array(z.string()),
   allowsPooling: z.boolean(),
   maxPickupDelayMin: z.number().min(0),
-  maxDropDelayMin: z.number().min(0),
+  maxDropDelayPercent: z.number().min(0),
 });
 
 const stopSchema = z.object({
@@ -123,12 +123,11 @@ export const matchingSettingsSchema = z.object({
   minimumUsableCandidates: z.number().int().min(1),
   maxH3Ring: z.number().int().min(0).max(12),
   maxPickupToRouteDistanceKm: z.number().min(0),
-  maxDropToRouteDistanceKm: z.number().min(0),
   maxBearingDifferenceDeg: z.number().min(0).max(180),
   estimatedSpeedKmh: z.number().min(1),
-  maxCorridorExtensionKm: z.number().min(0),
-  maxAdditionalDurationMin: z.number().min(0),
-  maxExistingPassengerDelayMin: z.number().min(0),
+  maxExistingPassengerDelayPercent: z.number().min(0),
+  shortTripSoloEtaMaxMin: z.number().min(0),
+  shortTripDelayPercent: z.number().min(0),
   maxNewPassengerPickupDelayMin: z.number().min(0),
   maxNewPassengerRideDetourMin: z.number().min(0),
   maxPooledPassengers: z.number().int().min(1),
@@ -181,6 +180,7 @@ const MIGRATION_MINUTES_PER_KM = 3;
 
 interface V1Passenger {
   maxPickupDelayMin?: number;
+  maxDropDelayPercent?: number;
   maxDropDelayMin?: number;
 }
 
@@ -216,7 +216,7 @@ function numberOr(value: unknown, fallback: number): number {
  * unknown properties.
  */
 function migrateSettings(legacy: Record<string, unknown>): Record<string, unknown> {
-  const merged = {
+  const merged: Record<string, unknown> = {
     ...DEFAULT_SETTINGS,
     ...legacy,
     stageOrder: [...DEFAULT_STAGE_ORDER],
@@ -227,6 +227,10 @@ function migrateSettings(legacy: Record<string, unknown>): Record<string, unknow
   // Drop settings removed from MatchingSettings so old exports stay importable.
   delete merged.maxDetourPercent;
   delete merged.maxAdditionalDistanceKm;
+  delete merged.maxDropToRouteDistanceKm;
+  delete merged.maxCorridorExtensionKm;
+  delete merged.maxAdditionalDurationMin;
+  delete merged.maxExistingPassengerDelayMin;
   return merged;
 }
 
@@ -260,9 +264,9 @@ function migrateToV2(input: unknown): unknown {
     legacySettings.maxNewPassengerPickupDelayMin,
     DEFAULT_SETTINGS.maxNewPassengerPickupDelayMin,
   );
-  const dropBudget = numberOr(
-    legacySettings.maxExistingPassengerDelayMin,
-    DEFAULT_SETTINGS.maxExistingPassengerDelayMin,
+  const dropBudgetPercent = numberOr(
+    legacySettings.maxExistingPassengerDelayPercent,
+    DEFAULT_SETTINGS.maxExistingPassengerDelayPercent,
   );
 
   clone.schemaVersion = 2;
@@ -274,7 +278,8 @@ function migrateToV2(input: unknown): unknown {
         continue;
       }
       passenger.maxPickupDelayMin ??= pickupBudget;
-      passenger.maxDropDelayMin ??= dropBudget;
+      passenger.maxDropDelayPercent ??= dropBudgetPercent;
+      delete passenger.maxDropDelayMin;
     }
   }
 
@@ -317,12 +322,33 @@ function migrateToV2(input: unknown): unknown {
   return clone;
 }
 
+function migratePassengerDelayFields(document: Record<string, unknown>): void {
+  if (!Array.isArray(document.passengers)) {
+    return;
+  }
+
+  for (const passenger of document.passengers) {
+    if (!isRecord(passenger)) {
+      continue;
+    }
+    if (passenger.maxDropDelayPercent === undefined) {
+      passenger.maxDropDelayPercent = DEFAULT_PASSENGER_DELAY_BUDGETS.maxDropDelayPercent;
+    }
+    delete passenger.maxDropDelayMin;
+  }
+}
+
 /**
  * Validates untrusted scenario JSON. A malformed bug repro must fail loudly
  * rather than half-loading and quietly changing what the engine is fed.
  */
 export function parseScenario(input: unknown): ScenarioParseResult {
-  const result = scenarioSchema.safeParse(migrateToV2(input));
+  const migrated = migrateToV2(input);
+  if (isRecord(migrated)) {
+    migratePassengerDelayFields(migrated);
+  }
+
+  const result = scenarioSchema.safeParse(migrated);
 
   if (!result.success) {
     return {

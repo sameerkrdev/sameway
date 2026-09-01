@@ -59,8 +59,14 @@ export const roadRoutingStage: MatchingStage = {
       // Keyed by stop id, not by position. The budget list and the remaining
       // stops are built by different filters; if they ever diverge, positional
       // indexing would silently promise one passenger another's ETA.
+      const delayBudgets = context.getDelayBudgets(driverId);
       const originalEtaByStopId = new Map(
-        context.getDelayBudgets(driverId).map((budget) => [budget.stopId, budget.originalEtaMin]),
+        delayBudgets.map((budget) => [budget.stopId, budget.originalEtaMin]),
+      );
+      const dropBudgetMinByStopId = new Map(
+        delayBudgets
+          .filter((budget) => budget.type === "DROP")
+          .map((budget) => [budget.stopId, budget.budgetMin]),
       );
 
       const committedStops: CommittedStopInput[] = corridor.remainingStops.map((stop) => ({
@@ -88,6 +94,7 @@ export const roadRoutingStage: MatchingStage = {
         seatCapacity: vehicle.totalSeats,
         committedStops,
         passengersById,
+        dropBudgetMinByStopId,
         request,
         newPassengerSoftDeadlineMin: request.maxWaitMinutes,
         softDeadlineCostPerHour: 50,

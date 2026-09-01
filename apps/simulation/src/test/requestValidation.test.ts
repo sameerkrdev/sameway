@@ -12,7 +12,7 @@ describe("requestValidation", () => {
         { id: "s1", passengerId: "pA", type: "PICKUP", originalEtaMin: 3 },
         { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 25 },
       ],
-      passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 30, maxDropDelayMin: 30 }],
+      passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 30, maxDropDelayPercent: 30 }],
       // Same passenger as the committed ride — sketch UI used to allow this.
       request: { passengerId: "pA" },
     });
@@ -29,7 +29,7 @@ describe("requestValidation", () => {
         { id: "s1", passengerId: "pA", type: "PICKUP", originalEtaMin: 3 },
         { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 25 },
       ],
-      passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 30, maxDropDelayMin: 30 }],
+      passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 30, maxDropDelayPercent: 30 }],
       request: { passengerId: "pNew" },
     });
 

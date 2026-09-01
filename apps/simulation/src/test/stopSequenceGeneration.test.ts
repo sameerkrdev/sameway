@@ -10,7 +10,7 @@ const twoStopRide: MakeContextInput = {
     { id: "s1", passengerId: "pA", type: "PICKUP", originalEtaMin: 4 },
     { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 15 },
   ],
-  passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 5, maxDropDelayMin: 8 }],
+  passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 5, maxDropDelayPercent: 8 }],
 };
 
 describe("stopSequenceGeneration", () => {
@@ -51,7 +51,7 @@ describe("stopSequenceGeneration", () => {
       ...twoStopRide,
       vehicle: { totalSeats: 1 },
       passengers: [
-        { id: "pA", state: "WAITING", maxPickupDelayMin: 5, maxDropDelayMin: 8, seatsRequired: 1 },
+        { id: "pA", state: "WAITING", maxPickupDelayMin: 5, maxDropDelayPercent: 8, seatsRequired: 1 },
       ],
     });
 
@@ -71,7 +71,7 @@ describe("stopSequenceGeneration", () => {
       driverId: "d1",
       committedStops: [{ id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 15 }],
       passengers: [
-        { id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayMin: 8, seatsRequired: 4 },
+        { id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayPercent: 8, seatsRequired: 4 },
       ],
       vehicle: { totalSeats: 4 },
     });
@@ -96,7 +96,7 @@ describe("stopSequenceGeneration", () => {
       driverId: "d1",
       committedStops: [{ id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 15 }],
       passengers: [
-        { id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayMin: 8, seatsRequired: 4 },
+        { id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayPercent: 8, seatsRequired: 4 },
       ],
       vehicle: { totalSeats: 4 },
       request: { seatsRequired: 5 },
@@ -123,7 +123,7 @@ describe("stopSequenceGeneration", () => {
         id: stop.passengerId,
         state: "WAITING" as const,
         maxPickupDelayMin: 5,
-        maxDropDelayMin: 8,
+        maxDropDelayPercent: 8,
       })),
       vehicle: { totalSeats: 40 },
     });

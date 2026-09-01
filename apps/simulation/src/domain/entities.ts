@@ -87,8 +87,8 @@ export interface Passenger {
    * against the solver's real leg times. One source of truth, four consumers.
    */
   maxPickupDelayMin: number;
-  /** The same tolerance, applied to arrival at their destination. */
-  maxDropDelayMin: number;
+  /** Drop delay tolerance as a percent of this passenger's solo trip ETA. */
+  maxDropDelayPercent: number;
 }
 
 export interface Stop {
@@ -189,7 +189,6 @@ export interface MatchingSettings {
 
   // Corridor proximity (stages 3 and 4).
   maxPickupToRouteDistanceKm: number;
-  maxDropToRouteDistanceKm: number;
   maxBearingDifferenceDeg: number;
 
   /**
@@ -199,10 +198,10 @@ export interface MatchingSettings {
   estimatedSpeedKmh: number;
 
   // Route feasibility.
-  /** Same-direction drop beyond the last committed stop (corridor extension). */
-  maxCorridorExtensionKm: number;
-  maxAdditionalDurationMin: number;
-  maxExistingPassengerDelayMin: number;
+  maxExistingPassengerDelayPercent: number;
+  /** Solo trips at or below this ETA use `shortTripDelayPercent` instead. */
+  shortTripSoloEtaMaxMin: number;
+  shortTripDelayPercent: number;
   maxNewPassengerPickupDelayMin: number;
   maxNewPassengerRideDetourMin: number;
 

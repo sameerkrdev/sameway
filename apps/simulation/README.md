@@ -190,8 +190,16 @@ A few decisions worth knowing:
   *Known limits* — the current form of that lock is stronger than intended.
 - **Commitments are priced, not frozen.** Stage 2 (`operationalState`) gives every
   committed stop a delay budget from its own passenger's tolerance. Stage 7
-  rejects *orderings* that break one, never the driver: a driver survives as long
-  as any ordering does.
+  (`pickupTimeWindow`) rejects *orderings* that break one, never the driver: a driver
+  survives as long as any ordering does.
+- **Enumeration vs Google (Stages 6–9).** Stages 6–8 explore where the new pickup
+  and drop can slot into the frozen committed spine using free math (capacity,
+  promises, straight-line cost). Stage 9 (`roadRouting`) makes **one** OptimizeTours
+  call per driver; only the cheapest shortlisted ordering becomes a `firstSolution`
+  warm-start hint (helps the heuristic solver, not a hard lock). Hints #2–#6 are
+  not retried on failure today. See
+  [`MATCHING-STAGES-GUIDE.md` § Stages 6–9](../../docs/MATCHING-STAGES-GUIDE.md#stages-69--enumeration-vs-google)
+  and [Why the firstSolution hint?](../../docs/MATCHING-STAGES-GUIDE.md#why-the-firstsolution-hint).
 - **Capacity is per segment.** Occupancy rises and falls along the route and the
   walk is seeded with passengers already aboard, whose pickups are no longer in
   the route. `totalSeats − passengerCount` is only a cheap pre-filter, which is
@@ -254,23 +262,26 @@ no `google.maps` imports, and are what would move to a Node service unchanged.
 
 Two remote services, billed differently, so they have separate budgets:
 
-- Stages 0–7 make no calls at all.
-- Stage 8 makes one `OptimizeTours` call per surviving driver, capped by
+- Stages through `pickupTimeWindow` and `detourLowerBound` make **no** remote calls.
+  They enumerate legal stop orderings, filter by capacity and committed promises,
+  then `detourLowerBound` shortlists at most `maxRoutedInsertionsPerDriver`
+  (default **6**) by straight-line added km. Only the **cheapest** kept ordering
+  is passed to Google as a `firstSolution` hint; the other shortlisted sequences
+  are for metrics and debugging, not separate API calls.
+- `roadRouting` makes **one** `OptimizeTours` call per surviving driver, capped by
   `maxOptimizerCallsPerRun`. `OptimizeTours` prices per *shipment*, so the debug
   console reports shipments billed alongside call count.
 - Baselines — the driver's pre-insertion route and the new rider's solo trip —
   stay on the Routes API, capped by `maxRoutingCallsPerRun`. There is nothing to
   optimise about an already-decided route, so paying solver pricing for a pure
   measurement would be waste.
-- Stage 7 prunes candidates on a provable straight-line lower bound before any
-  of that, then shortlists at most `maxRoutedInsertionsPerDriver`.
 - Drivers past either cap are reported `NOT_EVALUATED`, never silently failed.
   Budget exhaustion is not an opinion about a driver.
 - Both layers cache on a key covering every parameter that changes the answer,
   not just the coordinates.
 
-The debug console shows both budgets, cache hits and misses, and per-stage
-timings.
+The debug console shows both budgets, cache hits and misses, per-stage timings,
+and insertion `attemptStats` (enumerated vs geographically pruned vs **routed: 1**).
 ## How to add a new filter or stage
 
 1. Add a reason code to `src/matching/reasons.ts` with its category and label.
@@ -361,10 +372,15 @@ rejections by reason code.
 - **Committed stop order is preserved, not append-locked.** `committedPrecedence`
   becomes Google `precedenceRules`, so relative order among promised stops stays
   fixed while the new rider may be inserted in any gap when delay budgets allow.
-  Stage 7's best sequence is sent as `injectedFirstSolutionRoutes` — a hint, not
-  a hard lock. The legacy `lockedVisits` append-only path remains for tests only.
+  The cheapest sequence after `detourLowerBound` shortlisting is sent as
+  `injectedFirstSolutionRoutes` — a warm-start hint for the heuristic solver, not
+  a hard lock. Sequences #2–#6 on the shortlist are not retried if the first hint
+  fails (`OPTIMIZER_INFEASIBLE`). Multi-hint retries could improve match rate at
+  ~N× API cost; see the guide §
+  [Would six calls with six different hints improve matching?](../../docs/MATCHING-STAGES-GUIDE.md#would-six-calls-with-six-different-hints-improve-matching).
+  The legacy `lockedVisits` append-only path remains for tests only.
 - **The optimizer proxy is dev-server only.** `bun run build` produces static
-  files with no server behind them, so a built bundle cannot reach stage 8.
+  files with no server behind them, so a built bundle cannot reach `roadRouting`.
   Deliberate: this is a lab tool, not something anyone deploys.
 - **Commit concurrency is unsolved.** The lab commits one request at a time, so
   the Overview's atomic-seat-reservation problem never arises here. That is a

@@ -41,6 +41,8 @@ export interface BuildShipmentModelInput {
   passengersById: ReadonlyMap<string, Passenger>;
   request: RideRequest;
   /** Soft pickup deadline for the new rider, in minutes from now. */
+  /** Computed drop delay budgets from stage 1, keyed by committed stop id. */
+  dropBudgetMinByStopId: ReadonlyMap<string, number>;
   newPassengerSoftDeadlineMin: number;
   softDeadlineCostPerHour: number;
   timeoutMs: number;
@@ -107,6 +109,7 @@ export function buildOptimizeToursRequest(
     committedStops,
     passengersById,
     request,
+    dropBudgetMinByStopId,
     newPassengerSoftDeadlineMin,
     softDeadlineCostPerHour,
     timeoutMs,
@@ -144,7 +147,7 @@ export function buildOptimizeToursRequest(
       passengerId,
       drop: drop.location,
       seats: passenger.seatsRequired,
-      dropDeadlineMin: dropFloor + passenger.maxDropDelayMin,
+      dropDeadlineMin: dropFloor + (dropBudgetMinByStopId.get(drop.id) ?? 0),
       penaltyCost: null,
     };
 

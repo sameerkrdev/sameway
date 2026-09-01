@@ -18,7 +18,7 @@ const eastbound: MakeContextInput = {
   committedStops: [
     { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 20, lat: 28.6, lng: 77.3 },
   ],
-  passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayMin: 8 }],
+  passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 5, maxDropDelayPercent: 8 }],
 };
 
 describe("pickupRouteDistance", () => {

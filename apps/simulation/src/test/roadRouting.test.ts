@@ -33,7 +33,7 @@ const pooled: MakeContextInput = {
     { id: "s1", passengerId: "pA", type: "PICKUP", originalEtaMin: 3, lat: 28.6, lng: 77.22 },
     { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 25, lat: 28.6, lng: 77.34 },
   ],
-  passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 30, maxDropDelayMin: 30 }],
+  passengers: [{ id: "pA", state: "WAITING", maxPickupDelayMin: 30, maxDropDelayPercent: 30 }],
   request: { pickup: { lat: 28.6, lng: 77.26 }, drop: { lat: 28.6, lng: 77.31 } },
 };
 
@@ -160,7 +160,7 @@ describe("roadRouting", () => {
         { id: "s1", passengerId: "pA", type: "PICKUP", originalEtaMin: 3, lat: 28.6, lng: 77.22 },
         { id: "s2", passengerId: "pA", type: "DROP", originalEtaMin: 25, lat: 28.6, lng: 77.34 },
       ],
-      passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 30, maxDropDelayMin: 30 }],
+      passengers: [{ id: "pA", state: "IN_RIDE", maxPickupDelayMin: 30, maxDropDelayPercent: 30 }],
       request: { pickup: { lat: 28.6, lng: 77.26 }, drop: { lat: 28.6, lng: 77.31 } },
       optimizer,
     });
