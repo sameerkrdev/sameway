@@ -1,0 +1,14 @@
+node_modules
+dist
+.turbo
+coverage
+*.tsbuildinfo
+
+.env
+.env.local
+.env.*.local
+
+# Service account keys — never commit
+.secret/
+.secrets/
+*-sa.json
