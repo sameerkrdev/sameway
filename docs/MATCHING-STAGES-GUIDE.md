@@ -129,7 +129,7 @@ They fall into a few groups:
 | **Geometry pruning** | `maxPickupToRouteDistanceKm`, `maxBearingDifferenceDeg`, `estimatedSpeedKmh` | Cheap straight-line gates before any solver call (stages 4–5, 7) |
 | **Delay and detour budgets** | `maxNewPassengerPickupDelayMin`, `maxNewPassengerRideDetourMin`, `maxExistingPassengerDelayPercent`, `shortTripDelayPercent` | How much harm each party may absorb (stages 3, 7, 11) |
 | **Pooling policy** | `maxPooledPassengers` | Maximum shared passengers (stage 11) |
-| **Cost control** | `maxOptimizerCallsPerRun`, `maxRoutingCallsPerRun`, `maxRoutedInsertionsPerDriver`, `optimizerTimeoutMs` | Shortlist size in stage 8; one OptimizeTours call per driver in stage 9 (`maxOptimizerCallsPerRun`); Routes API calls for solo/baseline/map polylines (`maxRoutingCallsPerRun`) |
+| **Cost control** | `maxOptimizerCallsPerRun`, `maxRoutingCallsPerRun`, `maxRoutedInsertionsPerDriver`, `optimizerTimeoutMs` | Shortlist size in stage 8; one OptimizeTours call per driver in stage 9 (`maxOptimizerCallsPerRun`); Routes API calls in stages 9 **and 10** — the new rider's solo trip and each driver's baseline remaining route (stage 9), plus the solved-route polyline in stage 10 (`maxRoutingCallsPerRun`) |
 | **Scoring weights** | `weights.*` | Biases the final ranking without rejecting anyone (stage 12) |
 
 Passengers can carry their own pickup/drop delay tolerances (`maxPickupDelayMin` in
@@ -247,6 +247,11 @@ Pickup delays remain fixed minutes (`maxPickupDelayMin`).
 ---
 
 ## 5. How a run works
+
+**Read the stage order from `DEFAULT_STAGE_ORDER`, not from the stage files.**
+The `Stage N` comments at the top of `src/matching/stages/*.ts` date from before
+corridor discovery was promoted to slot 2 and no longer match run positions. The
+list below is authoritative.
 
 Stage order (fixed):
 
@@ -1140,6 +1145,13 @@ A plausible future enhancement: on `OPTIMIZER_INFEASIBLE`, retry with `sequences
 **Question:** Who gains/loses how much?
 
 **Rejects nobody.** Only measures. Stage 11 judges.
+
+**It does spend routing budget, though.** `incrementalCost.ts:175` calls
+`context.routing.getRoute(solvedWaypoints)` to get the solved route's polyline,
+consuming one `maxRoutingCallsPerRun` unit per driver on a cache miss. Note that
+`STAGE_METADATA` in `matching/pipeline.ts` still marks this stage
+`usesRouting: false` — that flag is stale and anything reading it under-reports
+routing spend.
 
 ---
 
