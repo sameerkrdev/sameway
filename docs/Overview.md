@@ -110,10 +110,10 @@ pipeline's reason codes).
   business events, not every 4-second location ping.
 
 **What the Matching Engine is, architecturally:** a stateless, horizontally
-scalable compute service. It has **no direct Postgres access**. It consumes a
-self-contained ride/driver snapshot from the Kafka message, reads the H3
-corridor index from Redis (read-only), calls Google's APIs, and publishes a
-result. This is a deliberate boundary, not an oversight — see
+scalable compute service. It has **no direct Postgres access**. It consumes the
+request from the Kafka message, reads the H3 corridor index, driver hashes and
+ride snapshots from Redis (read-only — see [§6.2](#62-redis-shared-hot-state--core-api-writes-matching-engine-reads-a-subset)),
+calls Google's APIs, and publishes a result. This is a deliberate boundary, not an oversight — see
 [§8](#8-matching-engine--responsibilities--modules) for the rationale.
 
 ---
@@ -122,7 +122,7 @@ result. This is a deliberate boundary, not an oversight — see
 
 | Layer               | Choice                                                  | Why                                                                                                                            | Rejected / alternative                                                                                                                              |
 | ------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Runtime             | Node.js + Express + TypeScript                          | Same language across `apps/simulation`, Core API, Matching Engine — one hiring/tooling story                                   | Fastify (faster, but Express is the known quantity here)                                                                                            |
+| Runtime             | **Node.js ≥24** + Express + TypeScript (services); **Bun** as package manager, Turborepo runner, and the runtime for `apps/simulation` + all tests | Same language across `apps/simulation`, Core API, Matching Engine — one hiring/tooling story. Services are on Node specifically because the locked Kafka client is a native addon that does not run on Bun | Fastify (faster, but Express is the known quantity here); Bun everywhere (blocked by the Kafka client)                                              |
 | ORM                 | **Prisma**                                              | Already locked for `apps/simulation` (Schema v2 + Zod migrator); one ORM story monorepo-wide                                   | Drizzle — better raw-SQL/PostGIS ergonomics; revisit only if Prisma's raw-query escape hatches become a real bottleneck on PostGIS-heavy queries    |
 | Primary DB          | PostgreSQL + PostGIS                                    | Durable source of truth; PostGIS for persistent geo analytics                                                                  | —                                                                                                                                                   |
 | Event backbone      | **Kafka**                                               | Durable, replayable, per-key-ordered log; the only sane bridge between a sub-second API and a multi-second matching call chain | Redis Streams (fine at small scale, weaker durability/replay); SQS/PubSub (workable, but weaker per-key ordering + no natural consumer-group story) |
@@ -131,25 +131,33 @@ result. This is a deliberate boundary, not an oversight — see
 | Auth                | Google OAuth (sign-in) + own JWT (RS256) access/refresh | Own tokens decouple you from Google's session lifetime; RS256 means any service verifies without holding a signing secret      | Cookie sessions — bad fit for two native apps + a web admin panel                                                                                   |
 | Monorepo            | TurboRepo                                               | Already established                                                                                                            | —                                                                                                                                                   |
 | Mobile              | Expo — driver app, passenger app                        | Already established                                                                                                            | —                                                                                                                                                   |
-| Admin               | React web app (own workspace, not Expo)                 | Ops tooling, not a mobile surface                                                                                              | —                                                                                                                                                   |
+| Admin               | **Next.js 16 (App Router)**, own workspace, not Expo     | Ops tooling, not a mobile surface. The scaffold that exists is Next; replacing it with Vite to match an earlier draft of this table would be churn with no product value | Vite React — what this doc originally specified, before the repo existed                                                                            |
 
 ---
 
 ## 4. Monorepo layout
 
+Folder names below are the **real ones on disk**. Do not create
+`driver-app` / `passenger-app` / `admin-web` — those were this doc's original
+names, written before the repo existed.
+
 ```
 apps/
-  api/                  # Core API — Express, sync, owns Postgres + Redis writes
-  matching-engine/      # Async worker — consumes/produces Kafka, no DB access
-  simulation/           # existing lab (unchanged, Phase 3 work continues there)
-  driver-app/           # Expo
-  passenger-app/        # Expo
-  admin-web/            # React (Vite)
+  api/                  # Core API — Express on Node, sync, owns Postgres + Redis writes
+  matching-engine/      # Async worker on Node — consumes/produces Kafka, no DB access
+  simulation/           # existing lab (Bun + Vite; Phase 3 work continues there)
+  captain/              # Expo — driver app
+  user/                 # Expo — passenger app
+  web/                  # Next.js 16 App Router — admin
 
 packages/
   db/                   # Prisma schema + generated client (shared by api only)
   types/                # Shared TS types (Ride, Passenger, MatchRequest, etc.)
-  kafka-schemas/        # Event payload contracts (zod schemas, versioned)
+                         #   OPEN: may be absorbed into matching-core instead —
+                         #   see BUILD-SPEC §7.2 C6
+  kafka-schemas/        # Event payload contracts (zod schemas, versioned), plus
+                         #   the ride:{rideId} Redis snapshot contract (§6.2)
+  kafka/                # @confluentinc/kafka-javascript wrapper, retry/DLQ
   auth/                 # JWT sign/verify, JWKS client — used by api + matching-engine
   h3/                   # h3-js wrappers (shared by api + matching-engine)
   routing/              # Google Routes/OptimizeTours client wrappers
@@ -157,7 +165,9 @@ packages/
                          #   so matching-engine and the simulation lab share
                          #   one implementation, not two that drift apart
   config/
-  ui/
+  logger/               # pino + requestId/rideId threading
+  validator/            # Zod HTTP DTOs (note: "validator", not "validation")
+  ui/                   # React-DOM components for apps/web today
 ```
 
 The single most important refactor implied here: **`matching-core` becomes a
@@ -249,15 +259,23 @@ is its own spec:
 | ----------------------------- | --------------------- | ---------------------------------- | ------------------------- | -------------------------------------------------------------------- |
 | `driver:{driverId}`           | Hash                  | Core API                           | Core API, Matching Engine | `lat, lng, h3Cell, status, vehicleId, currentRideId, lastSeenAt`     |
 | `h3:{cell}`                   | Set                   | Core API                           | Matching Engine           | Driver/ride ids whose corridor touches this cell — the Stage 1 index |
+| `ride:{rideId}`               | JSON doc              | Core API (commit worker, re-route) | Core API, Matching Engine | Read-only ride snapshot: `version`, driver/vehicle capability, remaining stop spine (`sequence`, `location`, `seats`, `originalEtaMin`), per-passenger delay budgets and pooling flags, current route polyline. This is how a Stage 1 corridor hit becomes a scoreable candidate without Matching Engine touching Postgres. Field list and staleness rules: `docs/BUILD-SPEC-phase-1.md` Appendix E |
 | `lock:ride:{rideId}`          | String, `NX PX 5000`  | Core API commit worker             | —                         | Serializes concurrent commit attempts, §12                           |
 | `lock:driver:{driverId}`      | String, `NX PX 5000`  | Core API commit worker             | —                         | Same, for first-passenger idle-driver commits                        |
 | `offer:{requestId}:claimed`   | String, `NX PX <ttl>` | Core API offer broadcaster         | —                         | Resolves the driver accept race before any DB write — see §11        |
 | `socket:user:{userId}`        | Set                   | Core API (Socket.IO Redis adapter) | Core API                  | Cross-instance WS fan-out                                            |
 | `ratelimit:{userId}:{bucket}` | String, TTL           | Core API                           | Core API                  | Token-bucket rate limiting                                           |
 
-Matching Engine has **read-only** Redis credentials scoped to the `h3:*` and
-`driver:*` key patterns — it cannot take locks or write driver state. This is
-enforced with a separate Redis ACL user, not just convention.
+Matching Engine has **read-only** Redis credentials scoped to the `h3:*`,
+`driver:*` and `ride:*` key patterns — it cannot take locks, write driver
+state, or read `lock:*` / `offer:*` at all. This is enforced with a separate
+Redis ACL user, not just convention.
+
+The `ride:{rideId}` snapshot is written on state transitions (every successful
+optimistic-locked commit, and a re-route that replaces the polyline), never on
+a GPS tick — the same "durable facts, not a firehose" principle §13 applies to
+Kafka, applied here to Redis. Its `version` is expected to lag; §12's
+optimistic lock, not snapshot freshness, is what makes a commit correct.
 
 ### 6.3 Kafka topics
 
@@ -303,7 +321,7 @@ apps/api/src/
     payments/
     ratings/
     notifications/   # push/SMS fan-out, consumes ride.lifecycle.events
-    admin/           # ops endpoints for admin-web
+    admin/           # ops endpoints for apps/web
   realtime/           # Socket.IO gateway, room management, Redis adapter
   kafka/              # producer/consumer wrappers (schemas from packages/kafka-schemas)
   redis/
@@ -320,8 +338,9 @@ conventional CRUD/API layer.
 
 ## 8. Matching Engine — responsibilities & modules
 
-Consumes `ride.match.requested`, runs the pipeline from
-`MATCHING-STAGES-GUIDE.md` against the embedded snapshot, produces
+Consumes `ride.match.requested`, discovers candidates from the `h3:{cell}`
+index, hydrates each one from `driver:{id}` and `ride:{rideId}` (§6.2), runs the
+pipeline from `MATCHING-STAGES-GUIDE.md`, and produces
 `ride.match.candidates` — the full ranked list of survivors past hard
 constraints, not just the top-scored winner (see [§11](#11-driver-broadcast--offer-flow)
 for what Core API does with that list). That's the entire external contract.
@@ -333,7 +352,9 @@ apps/matching-engine/src/
   producers/
     rideMatchCandidates.producer.ts
   corridor/
-    h3CorridorReader.ts        # read-only Redis client, scoped ACL
+    h3CorridorReader.ts        # read-only Redis client, scoped ACL — h3:{cell} → ids
+    rideSnapshotReader.ts      # same client — ride:{rideId} → the candidate's spine,
+                                 # budgets, capacity and version (§6.2)
   config/
     settings.ts                 # DEFAULT_SETTINGS, budgets (maxOptimizerCallsPerRun,
                                  # maxRoutingCallsPerRun, optimizerTimeoutMs)
@@ -351,7 +372,8 @@ apps/matching-engine/src/
 1. **Testability parity with the simulation lab.** `apps/simulation` already
    proved the value of a deterministic `stubOptimizer.ts` and snapshot-based
    test scenarios. A Matching Engine with no DB access is a pure function of
-   `(Kafka payload, Redis corridor read, Google API responses) → result` —
+   `(Kafka payload, read-only Redis — corridor index, driver hashes and ride
+   snapshots, Google API responses) → result` —
    exactly the same shape the simulation lab already tests against. A Matching
    Engine that reads Postgres directly would need its own, different test
    harness.
@@ -374,8 +396,8 @@ credentials, and because replica lag becomes a second source of staleness on
 top of the event-payload staleness §11 already has to handle — better to
 handle one staleness problem (optimistic locking) than two.
 
-**Staleness is expected and handled, not avoided.** The snapshot in
-`ride.match.requested` reflects ride state at publish time. By the time
+**Staleness is expected and handled, not avoided.** The `ride:{rideId}`
+snapshot reflects ride state as of the last commit that touched it. By the time
 `ride.match.candidates` comes back — and by the time a driver actually taps
 accept on one of those candidates, which can be a further 15s out — the real
 `Ride.version` for any given candidate may have moved (a different passenger
@@ -635,7 +657,7 @@ earnings view.
 with driver + other pooled stops (as appropriate to show), fare, in-app
 chat/call, rating.
 
-**Admin web (React, own workspace):** driver/passenger management, live ride
+**Admin web (Next.js 16 App Router, own workspace):** driver/passenger management, live ride
 inspector — effectively a production-facing version of the simulation lab's
 funnel view, since Stage 13's per-party impact metrics and reason codes are
 already exactly the data a support agent needs to answer "why wasn't I
@@ -718,6 +740,13 @@ decision, not just a throughput one.
 
 ## 17. Open decisions carried forward
 
+This is the canonical home for open decisions — if a question is answered here,
+it is answered everywhere. Decisions that **used** to sit here or in
+`docs/BUILD-SPEC-phase-1.md` and are now settled (service runtime, Matching
+Engine hydration, admin stack, validation package name, logger, Socket.IO
+adapter) live in that spec's §7.1 decision log with their rationale, and the
+relevant sections of this doc have been corrected to match.
+
 Still open, in rough priority order for what blocks LLD:
 
 1. **Kafka partition count & retention per topic** — direct scaling-capacity
@@ -735,11 +764,15 @@ Still open, in rough priority order for what blocks LLD:
    to go stale before accept.
 4. **Auto-accept-under-threshold policy for mid-trip insertions** — flagged as
    a product decision in §11, not an architecture one; needs an actual
-   detour-delta threshold picked before driver-app UX can be finalized.
+   detour-delta threshold picked before the captain-app UX can be finalized.
 5. **H3 resolution benchmarking** — unchanged from prior work, still gates
    Stage 1/4 precision-recall tuning.
-6. **Redis corridor diff/write-amplification strategy** — still open; now also
-   the thing `driver.cell.changed` publishing frequency depends on.
+6. **Redis write-amplification strategy** — still open, and now two things, not
+   one: (a) corridor-set diffing on cell change, which `driver.cell.changed`
+   publishing frequency also depends on, and (b) `ride:{rideId}` snapshot
+   republishing on commit (§6.2). (b) is bounded by commit rate rather than tick
+   rate so it should be the cheaper of the two, but "should be" is the part that
+   needs measuring — snapshot size × commits/sec is the number to get.
 7. **Method A/B routing threshold** — unchanged.
 8. **Re-optimization throttling / proactive re-matching of pending requests**
    — explicitly deferred to Phase 2 in §13; needs its own design before it's
